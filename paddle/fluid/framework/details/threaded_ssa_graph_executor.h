@@ -15,24 +15,17 @@
 #pragma once
 
 #include <deque>
-#include <functional>
-#include <list>
-#include <memory>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include <ThreadPool.h>  // ThreadPool in thrird party
-
+#include <functional>
+#include "ThreadPool.h"  // ThreadPool in thrird party
 #include "paddle/fluid/framework/blocking_queue.h"
-#include "paddle/fluid/framework/details/exception_holder.h"
 #include "paddle/fluid/framework/details/execution_strategy.h"
 #include "paddle/fluid/framework/details/fetch_op_handle.h"
-#include "paddle/fluid/framework/details/multi_devices_helper.h"
 #include "paddle/fluid/framework/details/ssa_graph_executor.h"
-#include "paddle/fluid/framework/ir/graph.h"
 
 namespace paddle {
 namespace framework {
@@ -40,78 +33,50 @@ class Scope;
 
 namespace details {
 
-struct OpDependentData {
-  std::unordered_map<OpHandleBase *, size_t> pending_ops_;
-  std::unordered_set<VarHandleBase *> pending_vars_;
-  std::unordered_set<OpHandleBase *> ready_ops_;
-  size_t num_ops_{0};
-};
-
 class ThreadedSSAGraphExecutor : public SSAGraphExecutor {
  public:
   ThreadedSSAGraphExecutor(const ExecutionStrategy &strategy,
                            const std::vector<Scope *> &local_scopes,
-                           const std::vector<Scope *> &local_exec_scopes,
                            const std::vector<platform::Place> &places,
-                           ir::Graph *graph);
+                           std::unique_ptr<SSAGraph> &&graph);
 
-  const ir::Graph &Graph() const override { return *graph_; }
   // Run a SSAGraph by a thread pool
   // Use topological sort algorithm
   FeedFetchList Run(const std::vector<std::string> &fetch_tensors) override;
 
-  ~ThreadedSSAGraphExecutor() final = default;
+  ~ThreadedSSAGraphExecutor() {}
 
  private:
-  inline FeedFetchList RunImpl(const std::vector<std::string> &fetch_tensors);
-  void RunOp(const std::shared_ptr<BlockingQueue<VarHandleBase *>> &ready_var_q,
+  void RunOp(BlockingQueue<VarHandleBase *> *ready_var_q,
              details::OpHandleBase *op);
 
  private:
-  // Note(zcd): the ThreadPool should be placed last so that ThreadPool should
-  // be destroyed first.
-  ir::Graph *graph_;
+  std::unique_ptr<SSAGraph> graph_;
+  std::unique_ptr<::ThreadPool> pool_;
   std::vector<Scope *> local_scopes_;
-  std::vector<Scope *> local_exec_scopes_;
-
   std::vector<platform::Place> places_;
   platform::DeviceContextPool fetch_ctxs_;
-  ExceptionHolder exception_holder_;
-  std::unique_ptr<OpDependentData> op_deps_;
-  std::future<std::unique_ptr<OpDependentData>> op_deps_futures_;
-  ExecutionStrategy strategy_;
-  // use std::list because clear(), push_back, and for_each are O(1)
-  std::list<std::future<void>> run_op_futures_;
-  ::ThreadPool prepare_pool_;
-  std::unique_ptr<::ThreadPool> pool_;
-  std::vector<OpHandleBase *> traced_ops_;
+  std::mutex exception_mu_;
+  std::unique_ptr<platform::EnforceNotMet> exception_;
+  std::atomic<int> running_ops_;
 
   void InsertPendingOp(std::unordered_map<OpHandleBase *, size_t> *pending_ops,
                        OpHandleBase *op_instance) const;
 
   void InsertPendingVar(std::unordered_set<VarHandleBase *> *pending_vars,
-                        std::unordered_set<VarHandleBase *> *ready_vars,
+                        BlockingQueue<VarHandleBase *> *ready_vars,
                         VarHandleBase *var) const;
 
-  void InsertFetchOps(const std::vector<std::string> &fetch_tensors,
-                      std::vector<OpHandleBase *> *fetch_ops,
-                      std::unordered_set<VarHandleBase *> *fetch_dependencies,
-                      std::unordered_set<OpHandleBase *> *ready_ops,
-                      std::unordered_map<OpHandleBase *, size_t> *pending_ops,
-                      std::unordered_set<VarHandleBase *> *pending_vars,
-                      FeedFetchList *fetch_data);
+  void InsertFetchOps(
+      const std::vector<std::string> &fetch_tensors,
+      std::vector<std::unique_ptr<FetchOpHandle>> *fetch_ops,
+      std::unordered_set<std::unique_ptr<VarHandleBase>> *fetch_dependencies,
+      std::unordered_map<OpHandleBase *, size_t> *pending_ops,
+      std::unordered_set<VarHandleBase *> *pending_vars,
+      BlockingQueue<VarHandleBase *> *ready_vars, FeedFetchList *fetch_data);
 
-  void PrepareOpDeps();
-
-  void CopyOpDeps();
-
-  inline void RecordOps(OpHandleBase *op);
-
-  inline void ExecutionFinal(std::vector<OpHandleBase *> *fetch_ops);
-
-  inline bool RunOpSync(OpHandleBase *op);
-
-  bool RunTracedOps(const std::vector<OpHandleBase *> &traced_ops);
+ private:
+  ExecutionStrategy strategy_;
 };
 
 }  // namespace details

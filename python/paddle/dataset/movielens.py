@@ -16,32 +16,27 @@ Movielens 1-M dataset.
 
 Movielens 1-M dataset contains 1 million ratings from 6000 users on 4000
 movies, which was collected by GroupLens Research. This module will download
-Movielens 1-M dataset from
+Movielens 1-M dataset from 
 http://files.grouplens.org/datasets/movielens/ml-1m.zip and parse training
 set and test set into paddle reader creators.
 
 """
 
-from __future__ import print_function
-
-import numpy as np
 import zipfile
 import paddle.dataset.common
 import re
 import random
 import functools
-import six
-import paddle.compat as cpt
 
 __all__ = [
     'train', 'test', 'get_movie_title_dict', 'max_movie_id', 'max_user_id',
-    'age_table', 'movie_categories', 'max_job_id', 'user_info', 'movie_info'
+    'age_table', 'movie_categories', 'max_job_id', 'user_info', 'movie_info',
+    'convert'
 ]
 
 age_table = [1, 18, 25, 35, 45, 50, 56]
 
-#URL = 'http://files.grouplens.org/datasets/movielens/ml-1m.zip'
-URL = 'https://dataset.bj.bcebos.com/movielens%2Fml-1m.zip'
+URL = 'http://files.grouplens.org/datasets/movielens/ml-1m.zip'
 MD5 = 'c4d9eecfca2ab87c1945afe126590906'
 
 
@@ -117,7 +112,6 @@ def __initialize_meta_info__():
                 categories_set = set()
                 with package.open('ml-1m/movies.dat') as movie_file:
                     for i, line in enumerate(movie_file):
-                        line = cpt.to_text(line, encoding='latin')
                         movie_id, title, categories = line.strip().split('::')
                         categories = categories.split('|')
                         for c in categories:
@@ -142,7 +136,6 @@ def __initialize_meta_info__():
                 USER_INFO = dict()
                 with package.open('ml-1m/users.dat') as user_file:
                     for line in user_file:
-                        line = cpt.to_text(line, encoding='latin')
                         uid, gender, age, job, _ = line.strip().split("::")
                         USER_INFO[int(uid)] = UserInfo(
                             index=uid, gender=gender, age=age, job_id=job)
@@ -151,12 +144,11 @@ def __initialize_meta_info__():
 
 def __reader__(rand_seed=0, test_ratio=0.1, is_test=False):
     fn = __initialize_meta_info__()
-    np.random.seed(rand_seed)
+    rand = random.Random(x=rand_seed)
     with zipfile.ZipFile(file=fn) as package:
         with package.open('ml-1m/ratings.dat') as rating:
             for line in rating:
-                line = cpt.to_text(line, encoding='latin')
-                if (np.random.random() < test_ratio) == is_test:
+                if (rand.random() < test_ratio) == is_test:
                     uid, mov_id, rating, _ = line.strip().split("::")
                     uid = int(uid)
                     mov_id = int(mov_id)
@@ -195,7 +187,7 @@ def max_movie_id():
     Get the maximum value of movie id.
     """
     __initialize_meta_info__()
-    return six.moves.reduce(__max_index_info__, list(MOVIE_INFO.values())).index
+    return reduce(__max_index_info__, MOVIE_INFO.viewvalues()).index
 
 
 def max_user_id():
@@ -203,7 +195,7 @@ def max_user_id():
     Get the maximum value of user id.
     """
     __initialize_meta_info__()
-    return six.moves.reduce(__max_index_info__, list(USER_INFO.values())).index
+    return reduce(__max_index_info__, USER_INFO.viewvalues()).index
 
 
 def __max_job_id_impl__(a, b):
@@ -218,13 +210,12 @@ def max_job_id():
     Get the maximum value of job id.
     """
     __initialize_meta_info__()
-    return six.moves.reduce(__max_job_id_impl__,
-                            list(USER_INFO.values())).job_id
+    return reduce(__max_job_id_impl__, USER_INFO.viewvalues()).job_id
 
 
 def movie_categories():
     """
-    Get movie categories dictionary.
+    Get movie categoriges dictionary.
     """
     __initialize_meta_info__()
     return CATEGORIES_DICT
@@ -252,11 +243,19 @@ def unittest():
     for test_count, _ in enumerate(test()()):
         pass
 
-    print(train_count, test_count)
+    print train_count, test_count
 
 
 def fetch():
     paddle.dataset.common.download(URL, "movielens", MD5)
+
+
+def convert(path):
+    """
+    Converts dataset to recordio format
+    """
+    paddle.dataset.common.convert(path, train(), 1000, "movielens_train")
+    paddle.dataset.common.convert(path, test(), 1000, "movielens_test")
 
 
 if __name__ == '__main__':

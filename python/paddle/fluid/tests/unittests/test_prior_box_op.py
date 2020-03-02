@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 import sys
@@ -34,7 +32,6 @@ class TestPriorBoxOp(OpTest):
             'variances': self.variances,
             'flip': self.flip,
             'clip': self.clip,
-            'min_max_aspect_ratios_order': self.min_max_aspect_ratios_order,
             'step_w': self.step_w,
             'step_h': self.step_h,
             'offset': self.offset
@@ -55,9 +52,6 @@ class TestPriorBoxOp(OpTest):
         max_sizes = [5, 10]
         self.max_sizes = np.array(max_sizes).astype('float32').tolist()
 
-    def set_min_max_aspect_ratios_order(self):
-        self.min_max_aspect_ratios_order = False
-
     def init_test_params(self):
         self.layer_w = 32
         self.layer_h = 32
@@ -77,7 +71,6 @@ class TestPriorBoxOp(OpTest):
         self.set_max_sizes()
         self.aspect_ratios = [2.0, 3.0]
         self.flip = True
-        self.set_min_max_aspect_ratios_order()
         self.real_aspect_ratios = [1, 2.0, 1.0 / 2.0, 3.0, 1.0 / 3.0]
         self.aspect_ratios = np.array(
             self.aspect_ratios, dtype=np.float).flatten()
@@ -85,6 +78,7 @@ class TestPriorBoxOp(OpTest):
         self.variances = np.array(self.variances, dtype=np.float).flatten()
 
         self.clip = True
+
         self.num_priors = len(self.real_aspect_ratios) * len(self.min_sizes)
         if len(self.max_sizes) > 0:
             self.num_priors += len(self.max_sizes)
@@ -112,60 +106,26 @@ class TestPriorBoxOp(OpTest):
                 idx = 0
                 for s in range(len(self.min_sizes)):
                     min_size = self.min_sizes[s]
-                    if not self.min_max_aspect_ratios_order:
-                        # rest of priors
-                        for r in range(len(self.real_aspect_ratios)):
-                            ar = self.real_aspect_ratios[r]
-                            c_w = min_size * math.sqrt(ar) / 2
-                            c_h = (min_size / math.sqrt(ar)) / 2
-                            out_boxes[h, w, idx, :] = [
-                                (c_x - c_w) / self.image_w, (c_y - c_h) /
-                                self.image_h, (c_x + c_w) / self.image_w,
-                                (c_y + c_h) / self.image_h
-                            ]
-                            idx += 1
-
-                        if len(self.max_sizes) > 0:
-                            max_size = self.max_sizes[s]
-                            # second prior: aspect_ratio = 1,
-                            c_w = c_h = math.sqrt(min_size * max_size) / 2
-                            out_boxes[h, w, idx, :] = [
-                                (c_x - c_w) / self.image_w, (c_y - c_h) /
-                                self.image_h, (c_x + c_w) / self.image_w,
-                                (c_y + c_h) / self.image_h
-                            ]
-                            idx += 1
-                    else:
-                        c_w = c_h = min_size / 2.
+                    # rest of priors
+                    for r in range(len(self.real_aspect_ratios)):
+                        ar = self.real_aspect_ratios[r]
+                        c_w = min_size * math.sqrt(ar) / 2
+                        c_h = (min_size / math.sqrt(ar)) / 2
                         out_boxes[h, w, idx, :] = [(c_x - c_w) / self.image_w,
                                                    (c_y - c_h) / self.image_h,
                                                    (c_x + c_w) / self.image_w,
                                                    (c_y + c_h) / self.image_h]
                         idx += 1
-                        if len(self.max_sizes) > 0:
-                            max_size = self.max_sizes[s]
-                            # second prior: aspect_ratio = 1,
-                            c_w = c_h = math.sqrt(min_size * max_size) / 2
-                            out_boxes[h, w, idx, :] = [
-                                (c_x - c_w) / self.image_w, (c_y - c_h) /
-                                self.image_h, (c_x + c_w) / self.image_w,
-                                (c_y + c_h) / self.image_h
-                            ]
-                            idx += 1
 
-                        # rest of priors
-                        for r in range(len(self.real_aspect_ratios)):
-                            ar = self.real_aspect_ratios[r]
-                            if abs(ar - 1.) < 1e-6:
-                                continue
-                            c_w = min_size * math.sqrt(ar) / 2
-                            c_h = (min_size / math.sqrt(ar)) / 2
-                            out_boxes[h, w, idx, :] = [
-                                (c_x - c_w) / self.image_w, (c_y - c_h) /
-                                self.image_h, (c_x + c_w) / self.image_w,
-                                (c_y + c_h) / self.image_h
-                            ]
-                            idx += 1
+                    if len(self.max_sizes) > 0:
+                        max_size = self.max_sizes[s]
+                        # second prior: aspect_ratio = 1,
+                        c_w = c_h = math.sqrt(min_size * max_size) / 2
+                        out_boxes[h, w, idx, :] = [(c_x - c_w) / self.image_w,
+                                                   (c_y - c_h) / self.image_h,
+                                                   (c_x + c_w) / self.image_w,
+                                                   (c_y + c_h) / self.image_h]
+                        idx += 1
 
         # clip the prior's coordidate such that it is within[0, 1]
         if self.clip:
@@ -177,14 +137,9 @@ class TestPriorBoxOp(OpTest):
         self.out_var = out_var.astype('float32')
 
 
-class TestPriorBoxOpWithoutMaxSize(TestPriorBoxOp):
+class TestPriorBoxOpWithMaxSize(TestPriorBoxOp):
     def set_max_sizes(self):
         self.max_sizes = []
-
-
-class TestPriorBoxOpWithSpecifiedOutOrder(TestPriorBoxOp):
-    def set_min_max_aspect_ratios_order(self):
-        self.min_max_aspect_ratios_order = True
 
 
 if __name__ == '__main__':

@@ -24,7 +24,7 @@
 #include "paddle/fluid/framework/selected_rows.h"
 #include "paddle/fluid/platform/device_context.h"
 
-#if defined(PADDLE_WITH_NCCL)
+#ifdef PADDLE_WITH_CUDA
 #include "paddle/fluid/platform/nccl_helper.h"
 #endif
 
@@ -34,43 +34,34 @@ namespace details {
 
 struct BroadcastOpHandle : public OpHandleBase {
  public:
-#if defined(PADDLE_WITH_NCCL)
-  BroadcastOpHandle(ir::Node *node, const std::vector<Scope *> &local_scopes,
+#ifdef PADDLE_WITH_CUDA
+  BroadcastOpHandle(const std::vector<Scope *> &local_scopes,
                     const std::vector<platform::Place> &places,
                     const platform::NCCLContextMap *nccl_ctxs)
-      : OpHandleBase(node),
-        local_scopes_(local_scopes),
-        places_(places),
-        nccl_ctxs_(nccl_ctxs) {
+      : local_scopes_(local_scopes), places_(places), nccl_ctxs_(nccl_ctxs) {
     if (nccl_ctxs_) {
       for (auto &p_ctx : nccl_ctxs_->contexts_) {
-        this->SetDeviceContext(platform::CUDAPlace(p_ctx.first),
-                               p_ctx.second.ctx_.get());
+        dev_ctxes_[platform::CUDAPlace(p_ctx.first)] = p_ctx.second.ctx_.get();
       }
     }
   }
 #else
-  BroadcastOpHandle(ir::Node *node, const std::vector<Scope *> &local_scopes,
+  BroadcastOpHandle(const std::vector<Scope *> &local_scopes,
                     const std::vector<platform::Place> &places)
-      : OpHandleBase(node), local_scopes_(local_scopes), places_(places) {}
+      : local_scopes_(local_scopes), places_(places) {}
 #endif
 
   std::string Name() const override;
 
-  bool IsMultiDeviceTransfer() override { return true; };
+  bool IsMultiDeviceTransfer() override { return false; };
 
  protected:
   void RunImpl() override;
 
-  std::vector<Scope *> GetLocalScopes() override { return local_scopes_; }
-
-  void BroadcastOneVar(const VarHandle &in_var_handle,
-                       const std::vector<VarHandle *> &out_var_handles,
-                       const std::vector<Scope *> &var_scopes);
-
+ private:
   std::vector<Scope *> local_scopes_;
   std::vector<platform::Place> places_;
-#if defined(PADDLE_WITH_NCCL)
+#ifdef PADDLE_WITH_CUDA
   const platform::NCCLContextMap *nccl_ctxs_;
 #endif
 

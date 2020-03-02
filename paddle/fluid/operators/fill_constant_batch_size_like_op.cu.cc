@@ -25,6 +25,4 @@ REGISTER_OP_CUDA_KERNEL(
     ops::FillConstantBatchSizeLikeOpKernel<paddle::platform::CUDADeviceContext,
                                            int>,
     ops::FillConstantBatchSizeLikeOpKernel<paddle::platform::CUDADeviceContext,
-                                           int64_t>,
-    ops::FillConstantBatchSizeLikeOpKernel<paddle::platform::CUDADeviceContext,
-                                           bool>);
+                                           int64_t>);

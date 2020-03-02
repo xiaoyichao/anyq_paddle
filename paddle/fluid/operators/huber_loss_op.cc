@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #include "paddle/fluid/operators/huber_loss_op.h"
-#include <memory>
-#include <string>
-#include <vector>
 
 namespace paddle {
 namespace operators {
@@ -25,28 +22,22 @@ class HuberLossOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext* ctx) const override {
-    PADDLE_ENFORCE_EQ(ctx->HasInput("X"), true,
-                      "Input(X) must be initialized.");
-    PADDLE_ENFORCE_EQ(ctx->HasInput("Y"), true,
-                      "Input(Y) must be initialized.");
+    PADDLE_ENFORCE(ctx->HasInput("X"), "Input(X) must be initialized.");
+    PADDLE_ENFORCE(ctx->HasInput("Y"), "Input(Y) must be initialized.");
 
     auto x_dims = ctx->GetInputDim("X");
     auto y_dims = ctx->GetInputDim("Y");
 
-    PADDLE_ENFORCE_EQ(x_dims.size(), y_dims.size(),
-                      "The rank of Input(X) should be equal to "
-                      "the rank of Input(Y).");
-    bool contain_unknown_dim = framework::contain_unknown_dim(x_dims) ||
-                               framework::contain_unknown_dim(y_dims);
-    if (ctx->IsRuntime() || !contain_unknown_dim) {
-      PADDLE_ENFORCE_EQ(
-          x_dims, y_dims,
-          "The Input(X) and Input(Label) should have the same shape.");
-    }
+    PADDLE_ENFORCE_EQ(x_dims, y_dims);
+    PADDLE_ENFORCE_EQ(x_dims.size(), 2,
+                      "The rank of Input(X) must be 2 and the shape is "
+                      "[batch_size, 1].");
+    PADDLE_ENFORCE_EQ(x_dims[1], 1,
+                      "Each row of Input(X) contains a real value, "
+                      "so the 2nd dimension of Input(X) must be 1.");
 
-    auto out_dims = y_dims;
-    ctx->SetOutputDim("Residual", out_dims);
-    ctx->SetOutputDim("Out", out_dims);
+    ctx->SetOutputDim("Residual", x_dims);
+    ctx->SetOutputDim("Out", {x_dims[0], 1});
     ctx->ShareLoD("X", "Out");
   }
 };
@@ -57,16 +48,16 @@ class HuberLossOpMaker : public framework::OpProtoAndCheckerMaker {
   void Make() override {
     AddInput("X",
              "The input value of huber loss op."
-             "X is a N-D tensor with shape [N_1, N_2,..., N_n].");
+             "X is a 2-D tensor with shape [batch_size, 1].");
     AddInput("Y",
              "The target value of huber loss op."
-             "Y is a N-D tensor with shape [N_1, N_2,..., N_n].");
+             "Y is a 2-D tensor with shape [batch_size, 1].");
     AddOutput("Residual",
               "Intermediate tensor to cache residual value between Y and X."
               "The shape is same as Input(X) and will be reused in backward.")
         .AsIntermediate();
     AddOutput("Out",
-              "The output N-D tensor with shape [N_1, N_2,..., N_n] "
+              "The output tensor with shape [batch_size, 1] "
               "which represents the huber loss.");
     AddAttr<AttrType>("delta", "Hyper parameter in huber loss.");
     AddComment(R"DOC(
@@ -74,7 +65,7 @@ HuberLoss Operator.
 
 Huber loss is a loss function used in robust regression. We define X as the
 input value and Y as the target value. Huber loss can evaluate the fitness of
-X to Y. Different from MSE loss, Huber loss is more robust for outliers. If the
+X to Y. Different from MSE loss, Huber loss is more robust for outliers. The
 shape of X and Y are [batch_size, 1]. The equation is:
 
 $$
@@ -99,37 +90,29 @@ class HuberLossGradOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext* ctx) const override {
-    PADDLE_ENFORCE_EQ(ctx->HasInput(framework::GradVarName("Out")), true,
-                      "Input(Out@GRAD) should not be null.");
+    PADDLE_ENFORCE(ctx->HasInput("X"), "Input(X) should not be null.");
+    PADDLE_ENFORCE(ctx->HasInput("Y"), "Input(Y) should not be null.");
+    PADDLE_ENFORCE(ctx->HasInput("Residual"),
+                   "Input(Residual) should not be null.");
+    PADDLE_ENFORCE(ctx->HasInput(framework::GradVarName("Out")),
+                   "Input(Out@GRAD) should not be null.");
 
+    auto x_dims = ctx->GetInputDim("X");
+    auto y_dims = ctx->GetInputDim("Y");
     auto residual_dims = ctx->GetInputDim("Residual");
+    auto out_grad_dims = ctx->GetInputDim(framework::GradVarName("Out"));
+
+    PADDLE_ENFORCE_EQ(residual_dims, x_dims);
+    PADDLE_ENFORCE_EQ(out_grad_dims, x_dims);
 
     auto x_grad_name = framework::GradVarName("X");
     auto y_grad_name = framework::GradVarName("Y");
     if (ctx->HasOutput(x_grad_name)) {
-      ctx->SetOutputDim(x_grad_name, residual_dims);
+      ctx->SetOutputDim(x_grad_name, x_dims);
     }
     if (ctx->HasOutput(y_grad_name)) {
-      ctx->SetOutputDim(y_grad_name, residual_dims);
+      ctx->SetOutputDim(y_grad_name, y_dims);
     }
-  }
-};
-
-template <typename T>
-class HuberLossGradOpMaker : public framework::SingleGradOpMaker<T> {
- public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
-
- protected:
-  std::unique_ptr<T> Apply() const override {
-    std::unique_ptr<T> op(new T());
-    op->SetType("huber_loss_grad");
-    op->SetInput("Residual", this->Output("Residual"));
-    op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
-    op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
-    op->SetOutput(framework::GradVarName("Y"), this->InputGrad("Y"));
-    op->SetAttrMap(this->Attrs());
-    return op;
   }
 };
 
@@ -138,13 +121,11 @@ class HuberLossGradOpMaker : public framework::SingleGradOpMaker<T> {
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(huber_loss, ops::HuberLossOp, ops::HuberLossOpMaker<float>,
-                  ops::HuberLossGradOpMaker<paddle::framework::OpDesc>,
-                  ops::HuberLossGradOpMaker<paddle::imperative::OpBase>);
+                  paddle::framework::DefaultGradOpDescMaker<true>);
 REGISTER_OPERATOR(huber_loss_grad, ops::HuberLossGradOp);
 REGISTER_OP_CPU_KERNEL(
-    huber_loss, ops::HuberLossKernel<paddle::platform::CPUDeviceContext, float>,
-    ops::HuberLossKernel<paddle::platform::CPUDeviceContext, double>);
+    huber_loss,
+    ops::HuberLossKernel<paddle::platform::CPUDeviceContext, float>);
 REGISTER_OP_CPU_KERNEL(
     huber_loss_grad,
-    ops::HuberLossGradKernel<paddle::platform::CPUDeviceContext, float>,
-    ops::HuberLossGradKernel<paddle::platform::CPUDeviceContext, double>);
+    ops::HuberLossGradKernel<paddle::platform::CPUDeviceContext, float>);

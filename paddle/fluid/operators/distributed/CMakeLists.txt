@@ -1,69 +1,33 @@
-if(NOT WITH_DISTRIBUTE)
-    return()
-endif()
-
 if(WITH_GRPC)
-    set(cc_generic_services "false")
-else()
-    set(cc_generic_services "true")
-endif()
-configure_file(send_recv.proto.in ${CMAKE_CURRENT_SOURCE_DIR}/send_recv.proto @ONLY)
-
-cc_library(async_sparse_param_update_recorder SRCS async_sparse_param_update_recorder.cc DEPS enforce simple_threadpool)
-cc_test(async_sparse_param_update_recorder_test SRCS async_sparse_param_update_recorder_test.cc DEPS async_sparse_param_update_recorder)
-
-cc_library(heart_beat_monitor SRCS heart_beat_monitor.cc DEPS enforce simple_threadpool)
-cc_test(heart_beat_monitor_test SRCS heart_beat_monitor_test.cc DEPS heart_beat_monitor)
-
-# FIXME(typhoonzero): use add_subdirectory once we clean the dependency of these files
-set(DISTRIBUTE_COMPILE_FLAGS "-Wno-non-virtual-dtor -Wno-error=non-virtual-dtor -Wno-error=delete-non-virtual-dtor")
-if(WITH_GRPC)
-  set(GRPC_DEPS grpc++_unsecure grpc_unsecure gpr zlib protobuf)
-  set(GRPC_SRCS grpc/grpc_client.cc grpc/grpc_server.cc grpc/grpc_serde.cc grpc/grpc_bytebuffer_stream.cc grpc/grpc_variable_response.cc)
-  grpc_library(sendrecvop_rpc SRCS sendrecvop_utils.cc
-        request_handler_impl.cc rpc_client.cc rpc_server.cc
-        variable_response.cc
-        collective_client.cc collective_server.cc
-        ${GRPC_SRCS}
-      PROTO send_recv.proto 
-      DEPS lod_tensor selected_rows_functor memory scope ${GRPC_DEPS} async_sparse_param_update_recorder heart_beat_monitor)
-
+  grpc_library(sendrecvop_grpc SRCS bytebuffer_stream.cc sendrecvop_utils.cc grpc_client.cc
+      request_handler_impl.cc rpc_client.cc rpc_server.cc grpc_server.cc variable_response.cc PROTO send_recv.proto DEPS lod_tensor
+      selected_rows memory)
+  set(DISTRIBUTE_COMPILE_FLAGS "-Wno-non-virtual-dtor -Wno-error=non-virtual-dtor -Wno-error=delete-non-virtual-dtor")
   set_source_files_properties(grpc_serde_test.cc rpc_server_test.cc PROPERTIES COMPILE_FLAGS ${DISTRIBUTE_COMPILE_FLAGS})
-  set(RPC_DEPS sendrecvop_rpc ${GRPC_DEPS})
-
-  cc_test(grpc_serde_test SRCS grpc/grpc_serde_test.cc 
-    DEPS ${RPC_DEPS} scope profiler math_function)
-
-else()
-  set(BRPC_SRCS brpc/brpc_client.cc brpc/brpc_server.cc brpc/brpc_sendrecvop_utils.cc brpc/brpc_variable_response.cc brpc/brpc_rdma_pool.cc)
-  set_source_files_properties(${BRPC_SRCS} parameter_prefetch.cc parameter_send.cc parameter_recv.cc communicator.cc rpc_server_test.cc brpc/brpc_serde_test.cc collective_server.cc collective_server_test.cc collective_client.cc PROPERTIES COMPILE_FLAGS ${DISTRIBUTE_COMPILE_FLAGS})
-
-  set(BRPC_DEPS brpc ssl crypto protobuf leveldb zlib)
-
-  brpc_library(sendrecvop_rpc SRCS sendrecvop_utils.cc
-      request_handler_impl.cc rpc_client.cc rpc_server.cc
-      variable_response.cc
-      collective_client.cc collective_server.cc
-      ${BRPC_SRCS}
-    PROTO send_recv.proto
-    DEPS lod_tensor selected_rows memory scope ${BRPC_DEPS})
-
-  set(RPC_DEPS sendrecvop_rpc ${BRPC_DEPS})
-  cc_test(brpc_serde_test SRCS brpc/brpc_serde_test.cc
-      DEPS ${RPC_DEPS} gflags glog executor proto_desc lookup_sparse_table_op)
+  cc_test(serde_test SRCS grpc_serde_test.cc variable_response.cc DEPS grpc++_unsecure grpc_unsecure gpr
+          cares zlib protobuf sendrecvop_grpc SERIAL)
+  cc_test(grpc_server_test SRCS rpc_server_test.cc DEPS sendrecvop_grpc
+          grpc++_unsecure grpc_unsecure gpr cares zlib protobuf executor
+          proto_desc lookup_table_op SERIAL)
+  return()
 endif()
 
 
-cc_test(rpc_server_test SRCS rpc_server_test.cc
-    DEPS ${RPC_DEPS} executor scope proto_desc lookup_sparse_table_op)
-cc_test(varhandle_test SRCS varhandle_test.cc DEPS profiler scope)
-cc_library(parameter_prefetch SRCS parameter_prefetch.cc DEPS sendrecvop_rpc memory)
-cc_library(parameter_send SRCS parameter_send.cc DEPS sendrecvop_rpc memory)
-cc_library(parameter_recv SRCS parameter_recv.cc DEPS sendrecvop_rpc memory)
-cc_library(communicator SRCS communicator.cc DEPS scope selected_rows tensor variable_helper selected_rows_functor simple_threadpool parameter_send parameter_recv)
-cc_test(communicator_test SRCS communicator_test.cc DEPS communicator)
-if(WITH_GPU)
-    cc_test(collective_server_test SRCS collective_server_test.cc 
-        DEPS sendrecvop_rpc executor ${RPC_DEPS}
-        selected_rows_functor  scope math_function)
-endif()
+set(DISTRIBUTE_COMPILE_FLAGS "-Wno-non-virtual-dtor -Wno-error=non-virtual-dtor -Wno-error=delete-non-virtual-dtor")
+set_source_files_properties(brpc_server.cc brpc_client.cc rpc_server_test.cc PROPERTIES COMPILE_FLAGS ${DISTRIBUTE_COMPILE_FLAGS})
+brpc_library(sendrecvop_brpc SRCS brpc_client.cc brpc_server.cc rpc_server.cc  rpc_client.cc request_handler_impl.cc
+  PROTO send_recv.proto
+  DEPS lod_tensor selected_rows memory)
+
+find_library(OPENSSL_CRYPTO_LIBRARY_STATIC NAMES libcrypto.so)
+ADD_LIBRARY(crypto SHARED IMPORTED GLOBAL)
+SET_PROPERTY(TARGET crypto PROPERTY IMPORTED_LOCATION ${OPENSSL_CRYPTO_LIBRARY_STATIC})
+
+
+find_library(OPENSSL_SSL_LIBRARY_STATIC NAMES libssl.so)
+ADD_LIBRARY(ssl SHARED IMPORTED GLOBAL)
+SET_PROPERTY(TARGET ssl PROPERTY IMPORTED_LOCATION ${OPENSSL_SSL_LIBRARY_STATIC})
+
+cc_test(brpc_server_test SRCS rpc_server_test.cc DEPS sendrecvop_brpc 
+       brpc protobuf leveldb gflags glog
+       protobuf executor proto_desc lookup_table_op snappystream snappy ssl crypto SERIAL)

@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import paddle
 import paddle.fluid as fluid
-from paddle.fluid.layers.device import get_places
 import unittest
 import os
 import numpy as np
@@ -83,7 +80,16 @@ def train(use_cuda, is_sparse, is_parallel, save_dirname, is_local=True):
         avg_cost, predict_word = __network__(
             [first_word, second_word, third_word, forth_word, next_word])
     else:
-        raise NotImplementedError()
+        places = fluid.layers.get_places()
+        pd = fluid.layers.ParallelDo(places)
+        with pd.do():
+            avg_cost, predict_word = __network__(
+                map(pd.read_input, [
+                    first_word, second_word, third_word, forth_word, next_word
+                ]))
+            pd.write_output(avg_cost)
+
+        avg_cost = fluid.layers.mean(pd())
 
     sgd_optimizer = fluid.optimizer.SGD(learning_rate=0.001)
     sgd_optimizer.minimize(avg_cost)
@@ -151,7 +157,7 @@ def infer(use_cuda, save_dirname=None):
     inference_scope = fluid.core.Scope()
     with fluid.scope_guard(inference_scope):
         # Use fluid.io.load_inference_model to obtain the inference program desc,
-        # the feed_target_names (the names of variables that will be fed
+        # the feed_target_names (the names of variables that will be feeded
         # data using feed operators), and the fetch_targets (variables that
         # we want to obtain data from using fetch operators).
         [inference_program, feed_target_names,
@@ -160,11 +166,11 @@ def infer(use_cuda, save_dirname=None):
         word_dict = paddle.dataset.imikolov.build_dict()
         dict_size = len(word_dict)
 
-        # Setup inputs by creating 4 LoDTensors representing 4 words. Here each word
-        # is simply an index to look up for the corresponding word vector and hence
-        # the shape of word (base_shape) should be [1]. The recursive_sequence_lengths,
-        # which is length-based level of detail (lod) of each LoDTensor, should be [[1]]
-        # meaning there is only one level of detail and there is only one sequence of
+        # Setup inputs by creating 4 LoDTensors representing 4 words. Here each word 
+        # is simply an index to look up for the corresponding word vector and hence 
+        # the shape of word (base_shape) should be [1]. The recursive_sequence_lengths, 
+        # which is length-based level of detail (lod) of each LoDTensor, should be [[1]] 
+        # meaning there is only one level of detail and there is only one sequence of 
         # one word on this level.
         # Note that recursive_sequence_lengths should be a list of lists.
         recursive_seq_lens = [[1]]
@@ -195,32 +201,9 @@ def infer(use_cuda, save_dirname=None):
                           },
                           fetch_list=fetch_targets,
                           return_numpy=False)
-
-        def to_infer_tensor(lod_tensor):
-            infer_tensor = fluid.core.PaddleTensor()
-            infer_tensor.lod = lod_tensor.lod()
-            infer_tensor.data = fluid.core.PaddleBuf(np.array(lod_tensor))
-            infer_tensor.shape = lod_tensor.shape()
-            infer_tensor.dtype = fluid.core.PaddleDType.INT64
-            return infer_tensor
-
-        infer_inputs = [first_word, second_word, third_word, fourth_word]
-        infer_inputs = [to_infer_tensor(t) for t in infer_inputs]
-
-        infer_config = fluid.core.NativeConfig()
-        infer_config.model_dir = 'word2vec.inference.model'
-        infer_config.use_gpu = use_cuda
-        if use_cuda:
-            infer_config.device = 0
-            infer_config.fraction_of_gpu_memory = 0.15
-        compiled_program = fluid.compiler.CompiledProgram(inference_program)
-        compiled_program._with_inference_optimize(infer_config)
-        assert compiled_program._is_inference is True
-        infer_outputs = exe.run(compiled_program, feed=infer_inputs)
+        print(results[0].recursive_sequence_lengths())
         np_data = np.array(results[0])
-        infer_out = infer_outputs[0].data.float_data()
-        for a, b in zip(np_data[0], infer_out):
-            assert np.isclose(a, b), "a: {}, b: {}".format(a, b)
+        print("Inference Shape: ", np_data.shape)
 
 
 def main(use_cuda, is_sparse, is_parallel):
@@ -261,7 +244,7 @@ def inject_test_method(use_cuda, is_sparse, is_parallel):
                     is_sparse=is_sparse,
                     is_parallel=is_parallel)
 
-    if (not fluid.core.is_compiled_with_cuda() or use_cuda) and is_sparse:
+    if use_cuda and is_sparse:
         fn = __impl__
     else:
         # skip the other test when on CI server
@@ -273,7 +256,7 @@ def inject_test_method(use_cuda, is_sparse, is_parallel):
 
 for use_cuda in (False, True):
     for is_sparse in (False, True):
-        for is_parallel in (False, ):
+        for is_parallel in (False, True):
             inject_test_method(use_cuda, is_sparse, is_parallel)
 
 if __name__ == '__main__':

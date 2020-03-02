@@ -74,14 +74,11 @@ struct BeamSearchDecodeFunctor {
   }
 
   template <typename T>
-  void apply() const;
+  void operator()() const;
 
   bool tensor_on_gpu_;
   size_t beam_size_;
   int end_id_;
-  // TODO(Superjomn) Here might result serious performance issue in the
-  // concurrency
-  // scenarios.
   const LoDTensorArray& step_ids_origin_;
   const LoDTensorArray& step_scores_origin_;
   LoDTensorArray step_ids_ = LoDTensorArray();
@@ -91,7 +88,7 @@ struct BeamSearchDecodeFunctor {
 };
 
 template <typename T>
-void BeamSearchDecodeFunctor::apply() const {
+void BeamSearchDecodeFunctor::operator()() const {
   BeamSearchDecoder<T> beam_search_decoder(beam_size_, end_id_);
   // Check if the tensor is on GPU. If so, use the CPU copy instead
   if (tensor_on_gpu_) {
@@ -104,7 +101,7 @@ void BeamSearchDecodeFunctor::apply() const {
 }
 
 template <>
-void BeamSearchDecodeFunctor::apply<bool>() const {
+void BeamSearchDecodeFunctor::operator()<bool>() const {
   PADDLE_THROW("beam search decode op does not support bool!");
 }
 
@@ -122,8 +119,7 @@ class BeamSearchDecodeOp : public framework::OperatorBase {
     platform::DeviceContextPool& pool = platform::DeviceContextPool::Instance();
     auto& dev_ctx = *pool.Get(dev_place);
 
-    framework::RuntimeContext run_ctx(Inputs(), Outputs(), scope);
-    framework::ExecutionContext ctx(*this, scope, dev_ctx, run_ctx, nullptr);
+    framework::ExecutionContext ctx(*this, scope, dev_ctx);
 
     const LoDTensorArray* ids = ctx.Input<LoDTensorArray>("Ids");
     const LoDTensorArray* scores = ctx.Input<LoDTensorArray>("Scores");
@@ -146,7 +142,7 @@ class BeamSearchDecodeOp : public framework::OperatorBase {
     LoDTensor* sentenceScores = ctx.Output<LoDTensor>("SentenceScores");
 
     framework::VisitDataType(
-        scores->at(0).type(),
+        framework::ToDataType(scores->at(0).type()),
         BeamSearchDecodeFunctor(*ids, *scores, sentenceIds, sentenceScores,
                                 beam_size, end_id));
   }
@@ -178,10 +174,10 @@ Beam Search Decode Operator. This Operator constructs the full hypotheses for
 each source sentence by walking back along the LoDTensorArray Input(ids)
 whose lods can be used to restore the path in the beam search tree.
 
-The Output(SentenceIds) and Output(SentenceScores) separately contain the
-generated id sequences and the corresponding scores. The shapes and lods of the
-two LodTensor are same. The lod level is 2 and the two levels separately
-indicate how many hypotheses each source sentence has and how many ids each
+The Output(SentenceIds) and Output(SentenceScores) separately contain the 
+generated id sequences and the corresponding scores. The shapes and lods of the 
+two LodTensor are same. The lod level is 2 and the two levels separately 
+indicate how many hypotheses each source sentence has and how many ids each 
 hypothesis has.
 )DOC");
   }
@@ -191,24 +187,27 @@ class BeamSearchDecodeInferShape : public framework::InferShapeBase {
  public:
   void operator()(framework::InferShapeContext* context) const override {
     PADDLE_ENFORCE(context->HasInput("Ids"),
-                   "BeamSearchDecodeOp must have input Ids");
+                   "BeamSearchDecodeOp must has input Ids");
     PADDLE_ENFORCE(context->HasInput("Scores"),
-                   "BeamSearchDecodeOp must have input Scores");
+                   "BeamSearchDecodeOp must has input Scores");
     PADDLE_ENFORCE(context->HasOutput("SentenceIds"),
-                   "BeamSearchDecodeOp must have output SentenceIds");
+                   "BeamSearchDecodeOp must has output SentenceIds");
     PADDLE_ENFORCE(context->HasOutput("SentenceScores"),
-                   "BeamSearchDecodeOp must have output SentenceScores");
+                   "BeamSearchDecodeOp must has output SentenceScores");
   }
 };
 
 class BeamSearchDecodeInferVarType : public framework::VarTypeInference {
  public:
-  void operator()(framework::InferVarTypeContext* ctx) const override {
-    for (auto& o : ctx->Output("SentenceIds")) {
-      ctx->SetType(o, framework::proto::VarType::LOD_TENSOR);
+  void operator()(const framework::OpDesc& op_desc,
+                  framework::BlockDesc* block) const override {
+    for (auto& o : op_desc.Output("SentenceIds")) {
+      auto& sentence_ids = block->FindRecursiveOrCreateVar(o);
+      sentence_ids.SetType(framework::proto::VarType::LOD_TENSOR);
     }
-    for (auto& o : ctx->Output("SentenceScores")) {
-      ctx->SetType(o, framework::proto::VarType::LOD_TENSOR);
+    for (auto& o : op_desc.Output("SentenceScores")) {
+      auto& sentence_scores = block->FindRecursiveOrCreateVar(o);
+      sentence_scores.SetType(framework::proto::VarType::LOD_TENSOR);
     }
   }
 };
@@ -216,10 +215,8 @@ class BeamSearchDecodeInferVarType : public framework::VarTypeInference {
 }  // namespace operators
 }  // namespace paddle
 
-REGISTER_OPERATOR(
-    beam_search_decode, paddle::operators::BeamSearchDecodeOp,
-    paddle::operators::BeamSearchDecodeOpProtoMaker,
-    paddle::operators::BeamSearchDecodeInferShape,
-    paddle::operators::BeamSearchDecodeInferVarType,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
+REGISTER_OPERATOR(beam_search_decode, paddle::operators::BeamSearchDecodeOp,
+                  paddle::operators::BeamSearchDecodeOpProtoMaker,
+                  paddle::operators::BeamSearchDecodeInferShape,
+                  paddle::operators::BeamSearchDecodeInferVarType,
+                  paddle::framework::EmptyGradOpMaker);

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -31,7 +29,7 @@ def modified_huber_loss_forward(val):
 class TestModifiedHuberLossOp(OpTest):
     def setUp(self):
         self.op_type = 'modified_huber_loss'
-        samples_num = 100
+        samples_num = 32
 
         x_np = np.random.uniform(-2., 2., (samples_num, 1)).astype('float32')
         y_np = np.random.choice([0, 1], samples_num).reshape(
@@ -57,7 +55,7 @@ class TestModifiedHuberLossOp(OpTest):
         self.check_output()
 
     def test_check_grad(self):
-        self.check_grad(['X'], 'Out')
+        self.check_grad(['X'], 'Out', max_relative_error=0.01)
 
 
 if __name__ == '__main__':

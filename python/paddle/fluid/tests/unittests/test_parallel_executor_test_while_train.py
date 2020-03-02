@@ -12,16 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-from simple_nets import simple_fc_net
 import paddle.fluid as fluid
-from paddle.fluid import compiler
-import paddle.fluid.core as core
 import numpy as np
 import unittest
 import os
-import sys
-import math
+
+
+def simple_fc_net():
+    img = fluid.layers.data(name='image', shape=[784], dtype='float32')
+    label = fluid.layers.data(name='label', shape=[1], dtype='int64')
+    hidden = img
+    for _ in xrange(4):
+        hidden = fluid.layers.fc(
+            hidden,
+            size=200,
+            act='tanh',
+            bias_attr=fluid.ParamAttr(
+                initializer=fluid.initializer.Constant(value=1.0)))
+    prediction = fluid.layers.fc(hidden, size=10, act='softmax')
+    loss = fluid.layers.cross_entropy(input=prediction, label=label)
+    loss = fluid.layers.mean(loss)
+    return loss
 
 
 class ParallelExecutorTestingDuringTraining(unittest.TestCase):
@@ -45,55 +56,42 @@ class ParallelExecutorTestingDuringTraining(unittest.TestCase):
             exe.run(startup)
             feed_dict = {'image': image, 'label': label}
 
-            train_cp = compiler.CompiledProgram(main).with_data_parallel(
-                loss_name=loss.name, build_strategy=build_strategy)
-            test_cp = compiler.CompiledProgram(test_program).with_data_parallel(
+            train_exe = fluid.ParallelExecutor(
+                use_cuda=use_cuda,
                 loss_name=loss.name,
-                build_strategy=build_strategy,
-                share_vars_from=train_cp)
+                main_program=main,
+                build_strategy=build_strategy)
 
-            for i in range(5):
-                exe.run(train_cp, feed=feed_dict, fetch_list=[loss.name])
-                test_loss, = exe.run(test_cp,
-                                     feed=feed_dict,
-                                     fetch_list=[loss.name])
-                train_loss, = exe.run(train_cp,
-                                      feed=feed_dict,
-                                      fetch_list=[loss.name])
+            test_exe = fluid.ParallelExecutor(
+                use_cuda=use_cuda,
+                main_program=test_program,
+                share_vars_from=train_exe,
+                build_strategy=build_strategy)
 
-                avg_test_loss_val = np.array(test_loss).mean()
-                if math.isnan(float(avg_test_loss_val)):
-                    sys.exit("got NaN loss, testing failed.")
+            for i in xrange(5):
+                test_loss, = test_exe.run([loss.name], feed=feed_dict)
 
-                avg_train_loss_val = np.array(train_loss).mean()
-                if math.isnan(float(avg_train_loss_val)):
-                    sys.exit("got NaN loss, training failed.")
+                train_loss, = train_exe.run([loss.name], feed=feed_dict)
 
                 self.assertTrue(
                     np.allclose(
-                        train_loss, test_loss, atol=1e-2),
+                        train_loss, test_loss, atol=1e-8),
                     "Train loss: " + str(train_loss) + "\n Test loss:" +
                     str(test_loss))
 
     def test_parallel_testing(self):
         build_strategy = fluid.BuildStrategy()
         build_strategy.reduce_strategy = fluid.BuildStrategy.ReduceStrategy.AllReduce
-        if core.is_compiled_with_cuda():
-            self.check_network_convergence(
-                use_cuda=True, build_strategy=build_strategy)
+        self.check_network_convergence(
+            use_cuda=True, build_strategy=build_strategy)
         self.check_network_convergence(
             use_cuda=False, build_strategy=build_strategy)
 
-    def test_parallel_testing_with_new_strategy_gpu(self):
+    def test_parallel_testing_with_new_strategy(self):
         build_strategy = fluid.BuildStrategy()
         build_strategy.reduce_strategy = fluid.BuildStrategy.ReduceStrategy.Reduce
-        if core.is_compiled_with_cuda():
-            self.check_network_convergence(
-                use_cuda=True, build_strategy=build_strategy)
-
-    def test_parallel_testing_with_new_strategy_cpu(self):
-        build_strategy = fluid.BuildStrategy()
-        build_strategy.reduce_strategy = fluid.BuildStrategy.ReduceStrategy.Reduce
+        self.check_network_convergence(
+            use_cuda=True, build_strategy=build_strategy)
         self.check_network_convergence(
             use_cuda=False, build_strategy=build_strategy)
 

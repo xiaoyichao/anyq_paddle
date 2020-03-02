@@ -45,7 +45,7 @@ class MeanIoUOp : public framework::OperatorWithKernel {
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
     return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "Predictions"),
+        framework::ToDataType(ctx.Input<Tensor>("Predictions")->type()),
         ctx.GetPlace());
   }
 };
@@ -103,10 +103,8 @@ is based on area of rectangle.
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(
-    mean_iou, ops::MeanIoUOp, ops::MeanIoUOpMaker,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
+REGISTER_OPERATOR(mean_iou, ops::MeanIoUOp, ops::MeanIoUOpMaker,
+                  paddle::framework::EmptyGradOpMaker);
 REGISTER_OP_CPU_KERNEL(mean_iou, ops::MeanIoUKernel<int>,
                        ops::MeanIoUKernel<int32_t>,
                        ops::MeanIoUKernel<int64_t>);

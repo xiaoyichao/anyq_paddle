@@ -20,10 +20,9 @@ namespace paddle {
 namespace framework {
 namespace details {
 
-GatherOpHandle::GatherOpHandle(ir::Node *node,
-                               const std::vector<Scope *> &local_scopes,
+GatherOpHandle::GatherOpHandle(const std::vector<Scope *> &local_scopes,
                                const std::vector<platform::Place> &places)
-    : OpHandleBase(node), local_scopes_(local_scopes), places_(places) {}
+    : local_scopes_(local_scopes), places_(places) {}
 
 void GatherOpHandle::RunImpl() {
   if (places_.size() == 1) return;
@@ -36,17 +35,20 @@ void GatherOpHandle::RunImpl() {
 
   VarHandle *out_var_handle;
   {
-    auto out_var_handles = DynamicCast<VarHandle>(this->Outputs());
+    auto out_var_handles = DynamicCast<VarHandle>(outputs_);
     PADDLE_ENFORCE_EQ(out_var_handles.size(), 1,
                       "The number of output should be one.");
     out_var_handle = out_var_handles.front();
   }
 
-  auto &var_scopes = local_exec_scopes_;
+  std::vector<const Scope *> var_scopes;
+  for (auto *s : local_scopes_) {
+    var_scopes.emplace_back(s->FindVar(kLocalExecScopeName)->Get<Scope *>());
+  }
 
   auto in_0_handle = in_var_handles[0];
   auto pre_in_var =
-      var_scopes.at(in_0_handle->scope_idx())->FindVar(in_0_handle->name());
+      var_scopes.at(in_0_handle->scope_idx_)->FindVar(in_0_handle->name_);
   PADDLE_ENFORCE_NOT_NULL(pre_in_var);
 
   PADDLE_ENFORCE(pre_in_var->IsType<framework::SelectedRows>(),
@@ -62,7 +64,7 @@ void GatherOpHandle::RunImpl() {
   // Gather the inputs
   for (auto *in_handle : in_var_handles) {
     auto *in_var =
-        var_scopes.at(in_handle->scope_idx())->FindVar(in_handle->name());
+        var_scopes.at(in_handle->scope_idx_)->FindVar(in_handle->name_);
     PADDLE_ENFORCE_NOT_NULL(in_var);
     VariableVisitor::EnforceShapeAndDTypeEQ(*in_var, *pre_in_var);
 
@@ -74,7 +76,7 @@ void GatherOpHandle::RunImpl() {
   }
 
   // NOTE: The Places of all input tensor must be all on CPU or all on GPU.
-  platform::Place t_out_p = out_var_handle->place();
+  platform::Place t_out_p = out_var_handle->place_;
   if (platform::is_gpu_place(pre_in_value.place())) {
     PADDLE_ENFORCE(platform::is_gpu_place(t_out_p),
                    "Places of input and output must be all on GPU.");
@@ -82,8 +84,8 @@ void GatherOpHandle::RunImpl() {
     t_out_p = platform::CPUPlace();
   }
 
-  auto out_var = var_scopes.at(out_var_handle->scope_idx())
-                     ->FindVar(out_var_handle->name());
+  auto out_var =
+      var_scopes.at(out_var_handle->scope_idx_)->FindVar(out_var_handle->name_);
   PADDLE_ENFORCE_NOT_NULL(out_var);
   auto out_value = out_var->GetMutable<framework::SelectedRows>();
   out_value->set_height(pre_in_value.height());
@@ -96,9 +98,9 @@ void GatherOpHandle::RunImpl() {
   Tensor *out_tensor = out_value->mutable_value();
 
   // copy
-  auto dev_ctx = dev_ctxes_.at(out_var_handle->place());
-  RunAndRecordEvent(out_var_handle->place(), [in_tensors, out_tensor, &dev_ctx,
-                                              t_out_p] {
+  auto dev_ctx = dev_ctxes_[out_var_handle->place_];
+  RunAndRecordEvent(out_var_handle->place_, [in_tensors, out_tensor, &dev_ctx,
+                                             t_out_p] {
     int s = 0, e = 0;
     for (size_t j = 0; j < in_tensors.size(); ++j) {
       e += in_tensors[j].dims()[0];

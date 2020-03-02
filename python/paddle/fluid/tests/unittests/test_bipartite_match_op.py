@@ -11,8 +11,6 @@
 #WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #See the License for the specific language governing permissions and
 #limitations under the License.
-
-from __future__ import print_function
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -50,7 +48,7 @@ def bipartite_match(distance, match_indices, match_dist):
 
 def argmax_match(distance, match_indices, match_dist, threshold):
     r, c = distance.shape
-    for j in range(c):
+    for j in xrange(c):
         if match_indices[j] != -1:
             continue
         col_dist = distance[:, j]
@@ -104,23 +102,6 @@ class TestBipartiteMatchOpWithoutLoD(OpTest):
         self.op_type = 'bipartite_match'
         lod = [[8]]
         dist = np.random.random((8, 17)).astype('float32')
-        match_indices, match_dist = batch_bipartite_match(dist, lod[0])
-
-        self.inputs = {'DistMat': dist}
-        self.outputs = {
-            'ColToRowMatchIndices': match_indices,
-            'ColToRowMatchDist': match_dist,
-        }
-
-    def test_check_output(self):
-        self.check_output()
-
-
-class TestBipartiteMatchOpWithoutLoDLargeScaleInput(OpTest):
-    def setUp(self):
-        self.op_type = 'bipartite_match'
-        lod = [[300]]
-        dist = np.random.random((300, 17)).astype('float32')
         match_indices, match_dist = batch_bipartite_match(dist, lod[0])
 
         self.inputs = {'DistMat': dist}

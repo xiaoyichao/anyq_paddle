@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import logging
 from paddle.fluid.op import Operator, DynamicRecurrentOp
 import paddle.fluid.core as core
@@ -38,7 +36,6 @@ class BeamSearchOpTester(unittest.TestCase):
         self._create_pre_ids()
         self.scope.var('selected_ids')
         self.scope.var('selected_scores')
-        self.scope.var('parent_idx')
 
     def test_run(self):
         op = Operator(
@@ -49,14 +46,12 @@ class BeamSearchOpTester(unittest.TestCase):
             scores='scores',
             selected_ids='selected_ids',
             selected_scores='selected_scores',
-            parent_idx='parent_idx',
             level=0,
             beam_size=2,
             end_id=0, )
         op.run(self.scope, core.CPUPlace())
         selected_ids = self.scope.find_var("selected_ids").get_tensor()
         selected_scores = self.scope.find_var("selected_scores").get_tensor()
-        parent_idx = self.scope.find_var("parent_idx").get_tensor()
         self.assertTrue(
             np.allclose(
                 np.array(selected_ids), np.array([4, 2, 3, 8])[:, np.newaxis]))
@@ -64,9 +59,8 @@ class BeamSearchOpTester(unittest.TestCase):
             np.allclose(
                 np.array(selected_scores),
                 np.array([0.5, 0.6, 0.9, 0.7])[:, np.newaxis]))
-        self.assertEqual(selected_ids.lod(), [[0, 2, 4], [0, 1, 2, 3, 4]])
-        self.assertTrue(
-            np.allclose(np.array(parent_idx), np.array([0, 1, 2, 3])))
+        self.assertEqual(selected_ids.lod(),
+                         [[0L, 2L, 4L], [0L, 1L, 2L, 3L, 4L]])
 
     def _create_pre_ids(self):
         np_data = np.array([[1, 2, 3, 4]], dtype='int64')

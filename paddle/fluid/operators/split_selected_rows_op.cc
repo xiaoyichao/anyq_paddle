@@ -14,8 +14,6 @@ limitations under the License. */
 
 #include "paddle/fluid/operators/split_selected_rows_op.h"
 
-#include <memory>
-
 namespace paddle {
 namespace operators {
 
@@ -24,9 +22,9 @@ class SplitSelectedRowsOpMaker : public framework::OpProtoAndCheckerMaker {
   void Make() override {
     AddInput("X", "The input SelectedRows.");
     AddOutput("Out", "The outputs of the input SelectedRows.").AsDuplicable();
-    AddAttr<std::vector<int64_t>>("height_sections",
-                                  "Height for each output SelectedRows.")
-        .SetDefault(std::vector<int64_t>({}));
+    AddAttr<std::vector<int>>("height_sections",
+                              "Height for each output SelectedRows.")
+        .SetDefault(std::vector<int>({}));
 
     AddComment(R"DOC(
 Split a SelectedRows with a specified rows section.
@@ -54,35 +52,34 @@ class SplitSelectedRowsOp : public framework::OperatorWithKernel {
   using framework::OperatorWithKernel::OperatorWithKernel;
 
   void InferShape(framework::InferShapeContext *ctx) const override {
-    PADDLE_ENFORCE(ctx->HasInput("X"),
-                   "SplitSelectedRowsOp must have input X.");
+    PADDLE_ENFORCE(ctx->HasInput("X"), "SplitSelectedRowsOp must has input X.");
     PADDLE_ENFORCE(ctx->HasOutputs("Out"),
-                   "SplitSelectedRowsOp must have output Out.");
+                   "SplitSelectedRowsOp must has output Out.");
   }
 };
 
 class SplitSelectedRowsOpInferVarType : public framework::VarTypeInference {
  public:
-  void operator()(framework::InferVarTypeContext *ctx) const override {
-    for (auto &out_var : ctx->Output("Out")) {
-      ctx->SetType(out_var, framework::proto::VarType::SELECTED_ROWS);
+  void operator()(const framework::OpDesc &op_desc,
+                  framework::BlockDesc *block) const override {
+    for (auto &out_var : op_desc.Output("Out")) {
+      block->Var(out_var)->SetType(framework::proto::VarType::SELECTED_ROWS);
     }
   }
 };
 
-template <typename T>
-class SplitSelectedRowsGradMaker : public framework::SingleGradOpMaker<T> {
+class SplitSelectedRowsGradMaker : public framework::SingleGradOpDescMaker {
  public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
+  using framework::SingleGradOpDescMaker::SingleGradOpDescMaker;
 
  protected:
-  std::unique_ptr<T> Apply() const override {
-    auto *grad_op = new T();
+  std::unique_ptr<framework::OpDesc> Apply() const override {
+    auto *grad_op = new framework::OpDesc();
     grad_op->SetType("sum");
-    grad_op->SetInput("X", this->OutputGrad("Out"));
-    grad_op->SetOutput("Out", this->InputGrad("X"));
-    grad_op->SetAttrMap(this->Attrs());
-    return std::unique_ptr<T>(grad_op);
+    grad_op->SetInput("X", OutputGrad("Out"));
+    grad_op->SetOutput("Out", InputGrad("X"));
+    grad_op->SetAttrMap(Attrs());
+    return std::unique_ptr<framework::OpDesc>(grad_op);
   }
 };
 
@@ -92,8 +89,7 @@ class SplitSelectedRowsGradMaker : public framework::SingleGradOpMaker<T> {
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(split_selected_rows, ops::SplitSelectedRowsOp,
                   ops::SplitSelectedRowsOpMaker,
-                  ops::SplitSelectedRowsGradMaker<paddle::framework::OpDesc>,
-                  ops::SplitSelectedRowsGradMaker<paddle::imperative::OpBase>,
+                  ops::SplitSelectedRowsGradMaker,
                   ops::SplitSelectedRowsOpInferVarType);
 REGISTER_OP_CPU_KERNEL(
     split_selected_rows,

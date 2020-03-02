@@ -18,45 +18,35 @@ namespace paddle {
 namespace operators {
 namespace math {
 
-// All tensors are in NCHW or NHWC format, and the groups must be greater than 1
+// All tensors are in NCHW format, and the groups must be greater than 1
 template <typename T>
 class MaxOutFunctor<platform::CPUDeviceContext, T> {
  public:
   void operator()(const platform::CPUDeviceContext& context,
                   const framework::Tensor& input, framework::Tensor* output,
-                  const int groups, const int axis) {
+                  int groups) {
     const int batch_size = input.dims()[0];
-    const int input_height = (axis == 1 ? input.dims()[2] : input.dims()[1]);
-    const int input_width = (axis == 1 ? input.dims()[3] : input.dims()[2]);
-    const int output_channels = output->dims()[axis];
+    const int input_height = input.dims()[2];
+    const int input_width = input.dims()[3];
+    const int output_channels = output->dims()[1];
     int fea_size = input_height * input_width;
     // c_size means the output size of each sample
     int c_size = fea_size * output_channels;
     const T* input_data = input.data<T>();
     T* output_data = output->mutable_data<T>(context.GetPlace());
+
     for (int i = 0; i < batch_size; ++i) {
       int new_bindex = c_size * i;
       for (int c = 0; c < output_channels; ++c) {
         int new_cindex = fea_size * c;
         for (int f = 0; f < fea_size; ++f) {
           T ele = static_cast<T>(-FLT_MAX);
-          int input_idx, output_idx;
           for (int ph = 0; ph < groups; ++ph) {
-            if (axis == 1) {
-              input_idx =
-                  (new_bindex + new_cindex) * groups + ph * fea_size + f;
-            } else {
-              input_idx = (new_bindex + f * output_channels + c) * groups + ph;
-            }
-            T x = input_data[input_idx];
+            T x = input_data[(new_bindex + new_cindex) * groups +
+                             ph * fea_size + f];
             ele = ele > x ? ele : x;
           }
-          if (axis == 1) {
-            output_idx = new_bindex + new_cindex + f;
-          } else {
-            output_idx = new_bindex + f * output_channels + c;
-          }
-          output_data[output_idx] = ele;
+          output_data[(new_bindex + new_cindex + f)] = ele;
         }
       }
     }
@@ -69,12 +59,11 @@ class MaxOutGradFunctor<platform::CPUDeviceContext, T> {
   void operator()(const platform::CPUDeviceContext& context,
                   const framework::Tensor& input, framework::Tensor* input_grad,
                   const framework::Tensor& output,
-                  const framework::Tensor& output_grad, const int groups,
-                  const int axis) {
+                  const framework::Tensor& output_grad, int groups) {
     const int batch_size = input.dims()[0];
-    const int input_height = (axis == 1 ? input.dims()[2] : input.dims()[1]);
-    const int input_width = (axis == 1 ? input.dims()[3] : input.dims()[2]);
-    const int output_channels = output.dims()[axis];
+    const int input_height = input.dims()[2];
+    const int input_width = input.dims()[3];
+    const int output_channels = output.dims()[1];
     int fea_size = input_height * input_width;
     const T* input_data = input.data<T>();
     const T* output_data = output.data<T>();
@@ -86,18 +75,11 @@ class MaxOutGradFunctor<platform::CPUDeviceContext, T> {
       for (int c = 0; c < output_channels; ++c) {
         int clen = fea_size * c;
         for (int f = 0; f < fea_size; ++f) {
-          int input_idx0, output_idx;
+          int input_idx0 = (blen + clen) * groups + f;
           bool continue_match = true;
-          if (axis == 1) {
-            input_idx0 = (blen + clen) * groups + f;
-            output_idx = blen + clen + f;
-          } else {
-            input_idx0 = (blen + f * output_channels + c) * groups;
-            output_idx = blen + f * output_channels + c;
-          }
+          int output_idx = blen + clen + f;
           for (int g = 0; g < groups && continue_match; ++g) {
-            int idx_offset = (axis == 1 ? fea_size * g : g);
-            int input_idx = input_idx0 + idx_offset;
+            int input_idx = input_idx0 + fea_size * g;
             if (input_data[input_idx] == output_data[output_idx]) {
               input_grad_data[input_idx] += output_grad_data[output_idx];
               continue_match = false;

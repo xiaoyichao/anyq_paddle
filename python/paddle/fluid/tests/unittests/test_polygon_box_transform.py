@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -25,9 +23,9 @@ def PolygonBoxRestore(input):
     geo_channels = shape[1]
     h = shape[2]
     w = shape[3]
-    h_indexes = np.array(list(range(h)) * w).reshape(
+    h_indexes = np.array(range(h) * w).reshape(
         [w, h]).transpose()[np.newaxis, :]  # [1, h, w]
-    w_indexes = np.array(list(range(w)) * h).reshape(
+    w_indexes = np.array(range(w) * h).reshape(
         [h, w])[np.newaxis, :]  # [1, h, w]
     indexes = np.concatenate(
         (w_indexes, h_indexes))[np.newaxis, :]  # [1, 2, h, w]
@@ -37,7 +35,7 @@ def PolygonBoxRestore(input):
     indexes = indexes.repeat(
         [batch_size], axis=0)  # [batch_size, geo_channels/2, 2, h, w]
     return indexes.reshape(
-        input.shape) * 4 - input  # [batch_size, geo_channels, h, w]
+        input.shape) - input  # [batch_size, geo_channels, h, w]
 
 
 class TestPolygonBoxRestoreOp(OpTest):

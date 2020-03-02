@@ -88,12 +88,11 @@ class BlockDesc {
   OpDesc *InsertOp(size_t index);
 
   /*
-   * Only remove op itself,
-   * do nothing to its input and output variables
+   * Remove Op and its input/output variables.
+   * Note that for either input or output variable, if it is also an input or
+   * output variable of other ops, we should remain it.
    */
   void RemoveOp(size_t s, size_t e);
-
-  void RemoveOpInternal(const OpDesc *op_desc);
 
   void RemoveVar(const std::string &name) { vars_.erase(name); }
 

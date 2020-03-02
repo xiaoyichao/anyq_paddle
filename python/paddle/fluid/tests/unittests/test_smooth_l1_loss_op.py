@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -30,7 +28,7 @@ def smooth_l1_loss_forward(val, sigma2):
 class TestSmoothL1LossOp1(OpTest):
     def setUp(self):
         self.op_type = "smooth_l1_loss"
-        dims = (5, 20)
+        dims = (5, 10)
         self.inputs = {
             'X': np.random.random(dims).astype("float32"),
             'Y': np.random.random(dims).astype("float32")
@@ -64,7 +62,7 @@ class TestSmoothL1LossOp1(OpTest):
 class TestSmoothL1LossOp2(OpTest):
     def setUp(self):
         self.op_type = "smooth_l1_loss"
-        dims = (5, 20)
+        dims = (5, 10)
         self.inputs = {
             'X': np.random.random(dims).astype("float32"),
             'Y': np.random.random(dims).astype("float32"),

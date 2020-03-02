@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -29,9 +28,8 @@ namespace framework {
 namespace details {
 
 struct RPCOpHandle : public OpHandleBase {
-  RPCOpHandle(ir::Node* node, const framework::OpDesc& op_desc,
-              Scope* local_scope, const std::string& name,
-              const platform::Place& place);
+  RPCOpHandle(const framework::OpDesc& op_desc, const Scope* local_scope,
+              const std::string& name, const platform::Place& place);
 
   std::string Name() const override;
 
@@ -42,11 +40,9 @@ struct RPCOpHandle : public OpHandleBase {
  protected:
   void RunImpl() override;
 
-  std::vector<Scope*> GetLocalScopes() override { return {local_scope_}; }
-
  private:
   std::unique_ptr<OperatorBase> op_;
-  Scope* local_scope_;
+  const Scope* local_scope_;
   const std::string name_;
   platform::Place place_;
 };

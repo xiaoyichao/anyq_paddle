@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -25,13 +23,10 @@ class TestSppOp(OpTest):
     def setUp(self):
         self.op_type = "spp"
         self.init_test_case()
-        nsize, csize, hsize, wsize = self.shape
-        data = np.array(list(range(nsize * csize * hsize * wsize)))
-        input = data.reshape(self.shape)
-        input_random = np.random.random(self.shape).astype("float64")
-        input = input + input_random
+        input = np.random.random(self.shape).astype("float32")
+        nsize, csize, hsize, wsize = input.shape
         out_level_flatten = []
-        for i in range(self.pyramid_height):
+        for i in xrange(self.pyramid_height):
             bins = np.power(2, i)
             kernel_size = [0, 0]
             padding = [0, 0]
@@ -53,21 +48,23 @@ class TestSppOp(OpTest):
             else:
                 output = np.concatenate((output, out_level_flatten[i]), 1)
         # output = np.concatenate(out_level_flatten.tolist(), 0);
-        self.inputs = {'X': input.astype('float64'), }
+        self.inputs = {'X': input.astype('float32'), }
         self.attrs = {
             'pyramid_height': self.pyramid_height,
             'pooling_type': self.pool_type
         }
-        self.outputs = {'Out': output.astype('float64')}
+
+        self.outputs = {'Out': output.astype('float32')}
 
     def test_check_output(self):
         self.check_output()
 
     def test_check_grad(self):
-        self.check_grad(['X'], 'Out')
+        if self.pool_type != "avg":
+            self.check_grad(['X'], 'Out', max_relative_error=0.05)
 
     def init_test_case(self):
-        self.shape = [3, 2, 16, 16]
+        self.shape = [3, 2, 4, 4]
         self.pyramid_height = 3
         self.pool2D_forward_naive = max_pool2D_forward_naive
         self.pool_type = "max"
@@ -75,7 +72,7 @@ class TestSppOp(OpTest):
 
 class TestCase2(TestSppOp):
     def init_test_case(self):
-        self.shape = [3, 2, 16, 16]
+        self.shape = [3, 2, 4, 4]
         self.pyramid_height = 3
         self.pool2D_forward_naive = avg_pool2D_forward_naive
         self.pool_type = "avg"

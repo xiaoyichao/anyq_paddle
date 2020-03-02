@@ -15,22 +15,18 @@
 All util layers.
 """
 
-from __future__ import print_function
-
-from .layer_function_generator import autodoc
+from layer_function_generator import autodoc
 from ..framework import unique_name
 from ..layer_helper import LayerHelper
-from ..annotations import deprecated
 
-__all__ = []
+__all__ = ['get_places']
 
 
-@deprecated(since='0.15.0', instead="ParallelExecutor")
 @autodoc()
 def get_places(device_count=None, device_type=None):
     helper = LayerHelper('get_places', **locals())
     out_places = helper.create_variable(
-        name=unique_name.generate_with_ignorable_key(helper.name + ".out"))
+        name=unique_name.generate(helper.name + ".out"))
     attrs = dict()
     if device_count is not None:
         attrs['device_count'] = int(device_count)

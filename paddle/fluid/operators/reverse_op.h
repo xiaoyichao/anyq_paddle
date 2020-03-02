@@ -28,11 +28,7 @@ struct ReverseFunctor {
       reverse_axis[i] = false;
     }
     for (int a : axis) {
-      if (a >= 0) {
-        reverse_axis[a] = true;
-      } else {
-        reverse_axis[Rank + a] = true;
-      }
+      reverse_axis[a] = true;
     }
 
     auto in_eigen = framework::EigenTensor<T, Rank>::From(in);

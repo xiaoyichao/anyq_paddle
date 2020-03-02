@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #pragma once
-
-#include <array>
 #include "paddle/fluid/framework/eigen.h"
 #include "paddle/fluid/framework/op_registry.h"
 #include "paddle/fluid/framework/operator.h"
@@ -31,11 +29,11 @@ class CumKernel : public framework::OpKernel<typename Functor::ELEMENT_TYPE> {
   void Compute(const framework::ExecutionContext& context) const override {
     auto& X = detail::Ref(context.Input<framework::Tensor>("X"),
                           "Cannot get input tensor X, variable name = %s",
-                          context.InputName("X"));
+                          context.op().Input("X"));
 
     auto& Out = detail::Ref(context.Output<framework::Tensor>("Out"),
                             "Cannot get output tensor Out, variable name = %s",
-                            context.OutputName("Out"));
+                            context.op().Output("Out"));
     int axis = context.Attr<int>("axis");
     bool exclusive = context.Attr<bool>("exclusive");
     bool reverse = context.Attr<bool>("reverse");

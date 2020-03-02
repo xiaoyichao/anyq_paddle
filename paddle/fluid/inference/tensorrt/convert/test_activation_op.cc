@@ -20,39 +20,28 @@ namespace paddle {
 namespace inference {
 namespace tensorrt {
 
-void test_activation(std::string act_type) {
+TEST(ReluOpConverter, main) {
   framework::Scope scope;
   std::unordered_set<std::string> parameters;
   TRTConvertValidation validator(10, parameters, scope, 1000);
-  validator.DeclInputVar("act-X", nvinfer1::Dims2(10, 6));
-  validator.DeclOutputVar("act-Out", nvinfer1::Dims2(10, 6));
+  validator.DeclInputVar("relu-X", nvinfer1::Dims2(10, 6));
+  validator.DeclOutputVar("relu-Out", nvinfer1::Dims2(10, 6));
 
   // Prepare Op description
   framework::OpDesc desc;
-  desc.SetType(act_type);
-  desc.SetInput("X", {"act-X"});
-  desc.SetOutput("Out", {"act-Out"});
+  desc.SetType("relu");
+  desc.SetInput("X", {"relu-X"});
+  desc.SetOutput("Out", {"relu-Out"});
 
   LOG(INFO) << "set OP";
   validator.SetOp(*desc.Proto());
   LOG(INFO) << "execute";
 
-  validator.Execute(5);
+  validator.Execute(10);
 }
-
-TEST(ReluOpConverter, main) { test_activation("relu"); }
-
-TEST(SigmoidOpConverter, main) { test_activation("sigmoid"); }
-
-TEST(TanhOpConverter, main) { test_activation("tanh"); }
-
-TEST(Relu6OpConverter, main) { test_activation("relu6"); }
 
 }  // namespace tensorrt
 }  // namespace inference
 }  // namespace paddle
 
 USE_OP(relu);
-USE_OP(sigmoid);
-USE_OP(tanh);
-USE_OP(relu6);

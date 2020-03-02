@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import math
 import sys
 import os
@@ -254,7 +252,7 @@ def infer(use_cuda, save_dirname=None):
     inference_scope = fluid.core.Scope()
     with fluid.scope_guard(inference_scope):
         # Use fluid.io.load_inference_model to obtain the inference program desc,
-        # the feed_target_names (the names of variables that will be fed
+        # the feed_target_names (the names of variables that will be feeded
         # data using feed operators), and the fetch_targets (variables that
         # we want to obtain data from using fetch operators).
         [inference_program, feed_target_names,
@@ -262,39 +260,35 @@ def infer(use_cuda, save_dirname=None):
 
         # Use the first data from paddle.dataset.movielens.test() as input
         assert feed_target_names[0] == "user_id"
-        # Use create_lod_tensor(data, recursive_sequence_lengths, place) API
-        # to generate LoD Tensor where `data` is a list of sequences of index
-        # numbers, `recursive_sequence_lengths` is the length-based level of detail
+        # Use create_lod_tensor(data, recursive_sequence_lengths, place) API 
+        # to generate LoD Tensor where `data` is a list of sequences of index 
+        # numbers, `recursive_sequence_lengths` is the length-based level of detail 
         # (lod) info associated with `data`.
         # For example, data = [[10, 2, 3], [2, 3]] means that it contains
         # two sequences of indexes, of length 3 and 2, respectively.
-        # Correspondingly, recursive_sequence_lengths = [[3, 2]] contains one
-        # level of detail info, indicating that `data` consists of two sequences
-        # of length 3 and 2, respectively.
-        user_id = fluid.create_lod_tensor([[np.int64(1)]], [[1]], place)
+        # Correspondingly, recursive_sequence_lengths = [[3, 2]] contains one 
+        # level of detail info, indicating that `data` consists of two sequences 
+        # of length 3 and 2, respectively. 
+        user_id = fluid.create_lod_tensor([[1]], [[1]], place)
 
         assert feed_target_names[1] == "gender_id"
-        gender_id = fluid.create_lod_tensor([[np.int64(1)]], [[1]], place)
+        gender_id = fluid.create_lod_tensor([[1]], [[1]], place)
 
         assert feed_target_names[2] == "age_id"
-        age_id = fluid.create_lod_tensor([[np.int64(0)]], [[1]], place)
+        age_id = fluid.create_lod_tensor([[0]], [[1]], place)
 
         assert feed_target_names[3] == "job_id"
-        job_id = fluid.create_lod_tensor([[np.int64(10)]], [[1]], place)
+        job_id = fluid.create_lod_tensor([[10]], [[1]], place)
 
         assert feed_target_names[4] == "movie_id"
-        movie_id = fluid.create_lod_tensor([[np.int64(783)]], [[1]], place)
+        movie_id = fluid.create_lod_tensor([[783]], [[1]], place)
 
         assert feed_target_names[5] == "category_id"
-        category_id = fluid.create_lod_tensor(
-            [np.array(
-                [10, 8, 9], dtype='int64')], [[3]], place)
+        category_id = fluid.create_lod_tensor([[10, 8, 9]], [[3]], place)
 
         assert feed_target_names[6] == "movie_title"
-        movie_title = fluid.create_lod_tensor(
-            [np.array(
-                [1069, 4140, 2923, 710, 988], dtype='int64')], [[5]],
-            place)
+        movie_title = fluid.create_lod_tensor([[1069, 4140, 2923, 710, 988]],
+                                              [[5]], place)
 
         # Construct feed as a dictionary of {feed_target_name: feed_target_data}
         # and results will contain a list of data corresponding to fetch_targets.

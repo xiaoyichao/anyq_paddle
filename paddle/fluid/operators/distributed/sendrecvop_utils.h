@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #pragma once
+#include <sys/time.h>
 #include <iostream>
 #include <string>
-#include <typeindex>
 #include <vector>
 
 #include "paddle/fluid/framework/data_type.h"
@@ -24,68 +24,41 @@ limitations under the License. */
 #include "paddle/fluid/framework/selected_rows.h"
 #include "paddle/fluid/framework/tensor_util.h"
 #include "paddle/fluid/framework/var_type.h"
-#include "paddle/fluid/operators/distributed/distributed_pb.h"
-#include "paddle/fluid/platform/port.h"
+
+#include "paddle/fluid/operators/distributed/send_recv.grpc.pb.h"
+#include "paddle/fluid/operators/distributed/send_recv.pb.h"
 
 namespace paddle {
 namespace operators {
 namespace distributed {
 
-using VarMsg = sendrecv::VariableMessage;
+typedef void (*DestroyCallback)(void*);
 
-class TensorPayload final {
- public:
-  explicit TensorPayload(const framework::Tensor& tensor);
-  explicit TensorPayload(std::shared_ptr<memory::Allocation> allocation);
+void SerializeToByteBuffer(const std::string& name, framework::Variable* var,
+                           const platform::DeviceContext& ctx,
+                           ::grpc::ByteBuffer* msg,
+                           const std::string& out_varname = std::string());
 
-  TensorPayload(const TensorPayload& o) = default;
-  TensorPayload& operator=(const TensorPayload& o) = default;
-
-  void* ptr() const;
-  size_t memory_size() const;
-
- private:
-  std::shared_ptr<memory::Allocation> allocation_;
-  size_t offset_;
-  size_t memory_size_;
-};
-
-inline void SerializeDestroyCallback(void* payload) {
-  if (payload != nullptr) {
-    auto* shared_payload = reinterpret_cast<TensorPayload*>(payload);
-    delete shared_payload;
-  }
-}
-
-TensorPayload GetTensorPayload(framework::Variable* var,
+void DeserializeFromByteBuffer(const ::grpc::ByteBuffer& msg,
                                const platform::DeviceContext& ctx,
-                               VarMsg* request);
+                               const framework::Scope* scope,
+                               framework::Variable** var);
 
-TensorPayload GetSelectedRowsPayload(framework::Variable* var,
-                                     const platform::DeviceContext& ctx,
-                                     VarMsg* request);
-
-inline framework::proto::VarType::Type ToVarType(
-    sendrecv::VariableMessage::Type type) {
+inline std::type_index ToTypeIndex(sendrecv::VariableMessage::Type type) {
   switch (type) {
     case sendrecv::VariableMessage::FP32:
-      return framework::proto::VarType::FP32;  // NOLINT
+      return typeid(float);  // NOLINT
     case sendrecv::VariableMessage::FP64:
-      return framework::proto::VarType::FP64;  // NOLINT
+      return typeid(double);  // NOLINT
     case sendrecv::VariableMessage::INT32:
-      return framework::proto::VarType::INT32;  // NOLINT
+      return typeid(int);  // NOLINT
     case sendrecv::VariableMessage::INT64:
-      return framework::proto::VarType::INT64;  // NOLINT
+      return typeid(int64_t);  // NOLINT
     case sendrecv::VariableMessage::BOOL:
-      return framework::proto::VarType::BOOL;  // NOLINT
+      return typeid(bool);  // NOLINT
     default:
       PADDLE_THROW("Not support type %d", type);
   }
-}
-
-template <template <typename> class T, typename Elem>
-std::string VectorElemName(const T<Elem>& arg) {
-  return typeid(Elem).name();
 }
 
 }  // namespace distributed

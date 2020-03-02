@@ -14,10 +14,13 @@ limitations under the License. */
 
 #pragma once
 #include <math.h>
-#include <stdexcept>
 #include <string>
-#include "paddle/fluid/platform/cpu_info.h"
+#include "paddle/fluid/platform/enforce.h"
 #include "paddle/fluid/platform/hostdevice.h"
+
+#ifdef __AVX__
+#include <immintrin.h>
+#endif
 
 namespace paddle {
 namespace operators {
@@ -45,7 +48,7 @@ inline ActivationType GetActivationType(const std::string &type) {
   } else if (type == "identity" || type == "") {
     return ActivationType::kIdentity;
   }
-  throw std::invalid_argument("The input type is not supported");
+  PADDLE_THROW("Not support type %s.", type);
 }
 
 namespace forward {

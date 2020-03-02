@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -27,38 +26,22 @@
 namespace paddle {
 namespace framework {
 namespace details {
-class ComputationOpHandle : public OpHandleBase {
+struct ComputationOpHandle : public OpHandleBase {
  public:
-  ComputationOpHandle(ir::Node *node, Scope *scope, platform::Place place,
-                      size_t scope_idx);
-
-  OperatorBase *GetOp() { return op_.get(); }
+  ComputationOpHandle(const OpDesc &op_desc, Scope *scope,
+                      platform::Place place);
 
   std::string Name() const override;
-
-  const Scope *GetScope() const { return scope_; }
-
-  Scope *GetScope() { return scope_; }
-
-  const platform::Place &GetPlace() const { return place_; }
-
-  void SetLockAndRecordEventFree(bool b) { is_lock_and_record_event_free_ = b; }
-
-  size_t GetScopeIdx() const { return scope_idx_; }
 
  protected:
   void RunImpl() override;
 
   bool NeedWait(VarHandleBase *in_var) override;
 
-  std::vector<Scope *> GetLocalScopes() override { return {scope_}; }
-
  private:
   std::unique_ptr<OperatorBase> op_;
   Scope *scope_;
   platform::Place place_;
-  size_t scope_idx_;
-  bool is_lock_and_record_event_free_{false};
 };
 }  // namespace details
 }  // namespace framework

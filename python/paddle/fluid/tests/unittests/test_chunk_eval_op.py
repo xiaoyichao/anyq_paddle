@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -65,7 +63,7 @@ class TestChunkEvalOp(OpTest):
         # generate chunk beginnings
         chunk_begins = sorted(
             np.random.choice(
-                list(range(starts[-1])), num_chunks, replace=False))
+                range(starts[-1]), num_chunks, replace=False))
         seq_chunk_begins = []
         begin_idx = 0
         # divide chunks into sequences
@@ -95,7 +93,7 @@ class TestChunkEvalOp(OpTest):
                                   self.num_infer_chunks + self.num_label_chunks
                                   - self.num_correct_chunks)
         correct_chunks = np.random.choice(
-            list(range(len(chunks))), self.num_correct_chunks, replace=False)
+            range(len(chunks)), self.num_correct_chunks, replace=False)
         infer_chunks = np.random.choice(
             [x for x in range(len(chunks)) if x not in correct_chunks],
             self.num_infer_chunks - self.num_correct_chunks,
@@ -140,8 +138,7 @@ class TestChunkEvalOp(OpTest):
         infer.fill(self.num_chunk_types * self.num_tag_types)
         label = np.copy(infer)
         starts = np.random.choice(
-            list(range(1, self.batch_size)),
-            self.num_sequences - 1,
+            range(1, self.batch_size), self.num_sequences - 1,
             replace=False).tolist()
         starts.extend([0, self.batch_size])
         starts = sorted(starts)
@@ -150,7 +147,7 @@ class TestChunkEvalOp(OpTest):
         lod = []
         for i in range(len(starts) - 1):
             lod.append(starts[i + 1] - starts[i])
-        self.set_input(infer, label, lod)
+        self.inputs = {'Inference': (infer, [lod]), 'Label': (label, [lod])}
         precision = float(
             self.num_correct_chunks
         ) / self.num_infer_chunks if self.num_infer_chunks else 0
@@ -172,9 +169,6 @@ class TestChunkEvalOp(OpTest):
             'NumCorrectChunks': np.asarray(
                 [self.num_correct_chunks], dtype='int64')
         }
-
-    def set_input(self, infer, label, lod):
-        self.inputs = {'Inference': (infer, [lod]), 'Label': (label, [lod])}
 
     def setUp(self):
         self.op_type = 'chunk_eval'
@@ -199,34 +193,6 @@ class TestChunkEvalOpWithExclude(TestChunkEvalOp):
         }
         self.parse_scheme()
         self.num_correct_chunks, self.num_infer_chunks, self.num_label_chunks = 15, 18, 20
-
-
-class TestChunkEvalOpWithTensorInput(TestChunkEvalOp):
-    def set_input(self, infer, label, lod):
-        max_len = np.max(lod)
-        pad_infer = []
-        pad_label = []
-        start = 0
-        for i in range(len(lod)):
-            end = lod[i] + start
-            pad_infer.append(
-                np.pad(infer[start:end], (0, max_len - lod[i]),
-                       'constant',
-                       constant_values=(-1, )))
-            pad_label.append(
-                np.pad(label[start:end], (0, max_len - lod[i]),
-                       'constant',
-                       constant_values=(-1, )))
-            start = end
-
-        pad_infer = np.expand_dims(np.array(pad_infer, dtype='int64'), 2)
-        pad_label = np.expand_dims(np.array(pad_label, dtype='int64'), 2)
-        lod = np.array(lod, dtype='int64')
-        self.inputs = {
-            'Inference': pad_infer,
-            'Label': pad_label,
-            'SeqLength': lod
-        }
 
 
 if __name__ == '__main__':

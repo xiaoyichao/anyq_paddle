@@ -32,6 +32,12 @@ limitations under the License. */
 #include "paddle/fluid/platform/place.h"
 
 namespace paddle {
+
+namespace recordio {
+class Writer;
+class Scanner;
+}
+
 namespace framework {
 
 /*
@@ -73,7 +79,7 @@ bool operator==(const LoD& a, const LoD& b);
  *
  * It will check two things:
  *
- *  1. all the offsets in a level should be non-descending.
+ *  1. all the offsets in a level should be ascending(no same items allows).
  *  2. there should be more than 2 offsets existing in each level.
  *  3. the higher level's last offset should equals the lower level's size-1.
  *  4. the first offset(the begin offset) of each level should be 0.
@@ -89,7 +95,7 @@ bool CheckLoD(const LoD& in, int tensor_height = -1);
  *   - Empty lod is treated as valid.
  *
  * It will check two things:
- *  1. all the offsets in a level should be ascending(no same items allowed).
+ *  1. all the offsets in a level should be ascending(no same items allows)
  *  2. there should be more than 2 offsets existing in each level.
  *  3. the first offset of each level should be 0, and the last should be the
  *     same(the height of underlying tensor) or `tensor_height` if
@@ -104,6 +110,9 @@ bool CheckAbsLoD(const LoD& in, int tensor_height = -1);
 class LoDTensor : public Tensor {
  public:
   LoDTensor() : Tensor() {}
+
+  /* Constructor with place should only be used in pybind */
+  explicit LoDTensor(const platform::Place& place) : Tensor(place) {}
 
   explicit LoDTensor(const LoD& lod) : lod_(lod) {}
 
@@ -209,10 +218,13 @@ void SerializeToStream(std::ostream& os, const LoDTensor& tensor,
                        const platform::DeviceContext& dev_ctx);
 void DeserializeFromStream(std::istream& is, LoDTensor* tensor,
                            const platform::DeviceContext& dev_ctx);
-void DeserializeFromStream(std::istream& is, LoDTensor* tensor,
-                           const platform::DeviceContext& dev_ctx,
-                           const size_t& seek,
-                           const std::vector<int64_t>& shape);
+
+extern void WriteToRecordIO(recordio::Writer* writer,
+                            const std::vector<LoDTensor>& tensor,
+                            const platform::DeviceContext& dev_ctx);
+
+extern std::vector<LoDTensor> ReadFromRecordIO(
+    recordio::Scanner* scanner, const platform::DeviceContext& dev_ctx);
 
 /*
  * Convert between length-based LoD and offset-based LoD.

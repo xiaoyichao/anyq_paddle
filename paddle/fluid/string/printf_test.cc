@@ -27,5 +27,4 @@ TEST(StringPrintf, StringPrintf) {
   EXPECT_EQ(std::string("Wednesday, July 27, 14:44"),
             paddle::string::Sprintf("%s, %s %d, %.2d:%.2d", weekday, month, day,
                                     hour, min));
-  EXPECT_EQ(std::string(""), paddle::string::Sprintf());
 }

@@ -17,20 +17,15 @@ limitations under the License. */
 namespace paddle {
 namespace operators {
 
-using DataLayout = framework::DataLayout;
-
 template <typename T>
 __global__ void KeCMRNormFillScale(int img_size, const T* in, T* mid, int C,
-                                   int H, int W, int size, T k, T alpha,
-                                   const DataLayout data_layout) {
+                                   int H, int W, int size, T k, T alpha) {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < img_size) {
     const int w = idx % W;
     const int h = (idx / W) % H;
     const int n = idx / W / H;
-    const int offset =
-        (data_layout != DataLayout::kNHWC ? (n * C * H + h) * W + w
-                                          : ((n * H + h) * W + w) * C);
+    const int offset = (n * C * H + h) * W + w;
 
     in += offset;
     mid += offset;
@@ -42,21 +37,15 @@ __global__ void KeCMRNormFillScale(int img_size, const T* in, T* mid, int C,
     int index = 0;
     while (index < C + post_pad) {
       if (index < C) {
-        int in_idx = (data_layout != DataLayout::kNHWC ? index * step : index);
-        T val = in[in_idx];
+        T val = in[index * step];
         accum += val * val;
       }
       if (index >= size) {
-        int in_idx = (data_layout != DataLayout::kNHWC ? (index - size) * step
-                                                       : index - size);
-        T val = in[in_idx];
+        T val = in[(index - size) * step];
         accum -= val * val;
       }
       if (index >= post_pad) {
-        int mid_idx =
-            (data_layout != DataLayout::kNHWC ? (index - post_pad) * step
-                                              : index - post_pad);
-        mid[mid_idx] = k + accum * alpha;
+        mid[(index - post_pad) * step] = k + accum * alpha;
       }
       ++index;
     }
@@ -75,14 +64,14 @@ __global__ void KeCMRNormOutput(int input_size, const T* in, const T* mid,
 template <typename T>
 void CrossMapNormal(const framework::ExecutionContext& ctx, const T* inputs,
                     T* outputs, T* mid, int N, int C, int H, int W, int n, T k,
-                    T alpha, T beta, const DataLayout data_layout) {
+                    T alpha, T beta) {
   int img_size = N * H * W;
   const int block_size = 1024;
   int grid_size = (img_size + block_size - 1) / block_size;
 
   auto& dev_ctx = ctx.template device_context<platform::CUDADeviceContext>();
   KeCMRNormFillScale<T><<<grid_size, block_size, 0, dev_ctx.stream()>>>(
-      img_size, inputs, mid, C, H, W, n, k, alpha, data_layout);
+      img_size, inputs, mid, C, H, W, n, k, alpha);
 
   int input_size = N * H * W * C;
   grid_size = (input_size + block_size - 1) / block_size;
@@ -95,11 +84,10 @@ struct LRNFunctor<platform::CUDADeviceContext, T> {
   void operator()(const framework::ExecutionContext& ctx,
                   const framework::Tensor& input, framework::Tensor* out,
                   framework::Tensor* mid, int N, int C, int H, int W, int n,
-                  T k, T alpha, T beta, const DataLayout data_layout) {
-    CrossMapNormal<T>(ctx, input.data<T>(),
-                      out->mutable_data<T>(ctx.GetPlace()),
-                      mid->mutable_data<T>(ctx.GetPlace()), N, C, H, W, n, k,
-                      alpha, beta, data_layout);
+                  T k, T alpha, T beta) {
+    CrossMapNormal<T>(
+        ctx, input.data<T>(), out->mutable_data<T>(ctx.GetPlace()),
+        mid->mutable_data<T>(ctx.GetPlace()), N, C, H, W, n, k, alpha, beta);
   }
 };
 
@@ -109,16 +97,14 @@ template struct LRNFunctor<platform::CUDADeviceContext, double>;
 template <typename T>
 __global__ void KeCMRNormDiff(int img_size, const T* x, const T* out,
                               const T* mid, T* x_g, const T* out_g, int C,
-                              int H, int W, int size, T negative_beta, T ratio,
-                              const DataLayout data_layout) {
+                              int H, int W, int size, T negative_beta,
+                              T ratio) {
   const int idx = threadIdx.x + blockIdx.x * blockDim.x;
   if (idx < img_size) {
     const int w = idx % W;
     const int h = (idx / W) % H;
     const int n = idx / W / H;
-    const int offset =
-        (data_layout != DataLayout::kNHWC ? (n * C * H + h) * W + w
-                                          : ((n * H + h) * W + w) * C);
+    const int offset = (n * C * H + h) * W + w;
     x += offset;
     out += offset;
     mid += offset;
@@ -134,20 +120,18 @@ __global__ void KeCMRNormDiff(int img_size, const T* x, const T* out,
     // TODO(gongwb): optimize this with thread shared array.
     while (index < C + post_pad) {
       if (index < C) {
-        int idx = (data_layout != DataLayout::kNHWC ? index * step : index);
-        x_g[idx] = 0.0;
-        accum += out_g[idx] * out[idx] / mid[idx];
+        x_g[index * step] = 0.0;
+        accum += out_g[index * step] * out[index * step] / mid[index * step];
       }
       if (index >= size) {
-        int idx = (data_layout != DataLayout::kNHWC ? (index - size) * step
-                                                    : index - size);
-        accum -= out_g[idx] * out[idx] / mid[idx];
+        accum -= out_g[(index - size) * step] * out[(index - size) * step] /
+                 mid[(index - size) * step];
       }
       if (index >= post_pad) {
-        int idx = (data_layout != DataLayout::kNHWC ? (index - post_pad) * step
-                                                    : index - post_pad);
-        x_g[idx] +=
-            out_g[idx] * pow(mid[idx], negative_beta) - ratio * x[idx] * accum;
+        x_g[(index - post_pad) * step] +=
+            out_g[(index - post_pad) * step] *
+                pow(mid[(index - post_pad) * step], negative_beta) -
+            ratio * x[(index - post_pad) * step] * accum;
       }
       ++index;
     }
@@ -157,8 +141,7 @@ __global__ void KeCMRNormDiff(int img_size, const T* x, const T* out,
 template <typename T>
 void CrossMapNormalGrad(const framework::ExecutionContext& ctx, const T* x,
                         const T* out, const T* mid, T* x_g, const T* out_g,
-                        int N, int C, int H, int W, int n, T alpha, T beta,
-                        const DataLayout data_layout) {
+                        int N, int C, int H, int W, int n, T alpha, T beta) {
   int img_size = N * H * W;
 
   const int block_size = 1024;
@@ -166,8 +149,8 @@ void CrossMapNormalGrad(const framework::ExecutionContext& ctx, const T* x,
 
   auto& dev_ctx = ctx.template device_context<platform::CUDADeviceContext>();
   KeCMRNormDiff<T><<<grid_size, block_size, 0, dev_ctx.stream()>>>(
-      img_size, x, out, mid, x_g, out_g, C, H, W, n, -beta, 2.0f * alpha * beta,
-      data_layout);
+      img_size, x, out, mid, x_g, out_g, C, H, W, n, -beta,
+      2.0f * alpha * beta);
 }
 
 template <typename T>
@@ -176,10 +159,10 @@ struct LRNGradFunctor<platform::CUDADeviceContext, T> {
                   const framework::Tensor& x, const framework::Tensor& out,
                   const framework::Tensor& mid, framework::Tensor* x_g,
                   const framework::Tensor& out_g, int N, int C, int H, int W,
-                  int n, T alpha, T beta, const DataLayout data_layout) {
+                  int n, T alpha, T beta) {
     CrossMapNormalGrad<T>(ctx, x.data<T>(), out.data<T>(), mid.data<T>(),
                           x_g->mutable_data<T>(ctx.GetPlace()), out_g.data<T>(),
-                          N, C, H, W, n, alpha, beta, data_layout);
+                          N, C, H, W, n, alpha, beta);
   }
 };
 

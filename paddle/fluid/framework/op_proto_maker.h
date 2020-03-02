@@ -14,26 +14,19 @@ limitations under the License. */
 #pragma once
 
 #include <string>
+#include <unordered_set>
+
 #include "glog/logging.h"
 #include "paddle/fluid/framework/attribute.h"
 #include "paddle/fluid/framework/framework.pb.h"
 namespace paddle {
 namespace framework {
 
-//////////////////////////
-// Don't add more roles to make this too complicated!
-//////////////////////////
 enum class OpRole {
   kForward = 0x0000,
   kBackward = 0x0001,
   kOptimize = 0x0002,
-  // RPC role is for send/recv related op
-  kRPC = 0x0004,
-  // Dist role is for split_byref/split_selected_rows/concat
-  // used for distributed training.
-  kDist = 0x0008,
-  // Tag all learning rate scheduler operators.
-  kLRSched = 0x0010,
+  kRPC = 0x0003,
 
   kLoss = 0x0100,
   // The default value of op's role. This should be only used for unittests and
@@ -46,8 +39,6 @@ class OpProtoAndCheckerMaker {
  public:
   static const char *OpRoleAttrName() { return "op_role"; }
   static const char *OpRoleVarAttrName() { return "op_role_var"; }
-  static const char *OpNamescopeAttrName() { return "op_namescope"; }
-  static const char *OpCreationCallstackAttrName() { return "op_callstack"; }
 
   void operator()(proto::OpProto *proto, OpAttrChecker *attr_checker);
 
@@ -75,6 +66,11 @@ class OpProtoAndCheckerMaker {
       var_->set_dispensable(true);
       return *this;
     }
+
+    VariableBuilder &Reuse(const std::string &name) {
+      var_->set_reuse(name);
+      return *this;
+    }
   };
 
   VariableBuilder AddInput(const std::string &name, const std::string &comment);
@@ -99,6 +95,8 @@ class OpProtoAndCheckerMaker {
  private:
   void CheckNoDuplicatedInOutAttrs();
   void Validate();
+
+  void CheckReuseVars();
 
   proto::OpProto *proto_;
   OpAttrChecker *op_checker_;

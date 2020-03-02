@@ -19,20 +19,18 @@ namespace paddle {
 namespace operators {
 namespace math {
 
-template <typename DeviceContext, typename T, bool is_test,
-          typename Enable = void>
+template <typename DeviceContext, typename T>
 class SoftmaxFunctor {
  public:
-  void operator()(const DeviceContext& context, const int axis_dim,
-                  const framework::Tensor* X, framework::Tensor* Y);
+  void operator()(const DeviceContext& context, const framework::Tensor* X,
+                  framework::Tensor* Y);
 };
 
-template <typename DeviceContext, typename T, typename Enable = void>
+template <typename DeviceContext, typename T>
 class SoftmaxGradFunctor {
  public:
-  void operator()(const DeviceContext& context, const int axis_dim,
-                  const framework::Tensor* y, const framework::Tensor* y_grad,
-                  framework::Tensor* x_grad);
+  void operator()(const DeviceContext& context, const framework::Tensor* y,
+                  const framework::Tensor* y_grad, framework::Tensor* x_grad);
 };
 
 #ifdef PADDLE_WITH_CUDA
@@ -50,7 +48,6 @@ class SoftmaxGradCUDNNFunctor {
                   const framework::Tensor* Y, const framework::Tensor* y_grad,
                   framework::Tensor* x_grad);
 };
-
 #endif
 
 }  // namespace math

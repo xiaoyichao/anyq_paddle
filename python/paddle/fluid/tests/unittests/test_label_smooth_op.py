@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -23,7 +21,7 @@ class TestLabelSmoothOp(OpTest):
     def config(self):
         self.op_type = "label_smooth"
         self.epsilon = 0.1
-        batch_size, self.label_dim = 10, 12
+        batch_size, self.label_dim = 5, 10
         self.label = np.zeros((batch_size, self.label_dim)).astype("float64")
         nonzero_index = np.random.randint(self.label_dim, size=(batch_size))
         self.label[np.arange(batch_size), nonzero_index] = 1
@@ -51,24 +49,6 @@ class TestLabelSmoothOpWithPriorDist(TestLabelSmoothOp):
         self.inputs = {'X': self.label, 'PriorDist': dist}
         self.attrs = {'epsilon': self.epsilon}
         self.outputs = {'Out': smoothed_label}
-
-
-class TestLabelSmoothOp3D(TestLabelSmoothOp):
-    def setUp(self):
-        super(TestLabelSmoothOp3D, self).setUp()
-        self.inputs['X'] = self.inputs['X'].reshape(
-            [2, -1, self.inputs['X'].shape[-1]])
-        self.outputs['Out'] = self.outputs['Out'].reshape(self.inputs['X']
-                                                          .shape)
-
-
-class TestLabelSmoothOpWithPriorDist3D(TestLabelSmoothOpWithPriorDist):
-    def setUp(self):
-        super(TestLabelSmoothOpWithPriorDist3D, self).setUp()
-        self.inputs['X'] = self.inputs['X'].reshape(
-            [2, -1, self.inputs['X'].shape[-1]])
-        self.outputs['Out'] = self.outputs['Out'].reshape(self.inputs['X']
-                                                          .shape)
 
 
 if __name__ == '__main__':

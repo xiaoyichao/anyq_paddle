@@ -14,7 +14,7 @@ limitations under the License. */
 
 #include "glog/logging.h"
 #include "paddle/fluid/memory/detail/memory_block.h"
-#include "paddle/fluid/platform/enforce.h"
+#include "paddle/fluid/platform/assert.h"
 
 namespace paddle {
 namespace memory {
@@ -22,25 +22,23 @@ namespace detail {
 
 MetadataCache::MetadataCache(bool uses_gpu) : uses_gpu_(uses_gpu) {}
 
-MemoryBlock::Desc* MetadataCache::LoadDesc(MemoryBlock* block) {
+MemoryBlock::Desc MetadataCache::load(const MemoryBlock* block) const {
   if (uses_gpu_) {
-    auto iter = cache_.find(block);
-    PADDLE_ENFORCE_NE(iter, cache_.end());
-    auto* desc = &(iter->second);
-    PADDLE_ENFORCE_EQ(desc->CheckGuards(), true, "Invalid CPU memory access");
-    return desc;
+    auto existing_desc = cache_.find(block);
+    PADDLE_ASSERT(existing_desc->second.check_guards());
+    return existing_desc->second;
   } else {
-    auto* desc = reinterpret_cast<MemoryBlock::Desc*>(block);
+    auto* desc = reinterpret_cast<const MemoryBlock::Desc*>(block);
     VLOG(10) << "Load MemoryBlock::Desc type=" << desc->type;
-    PADDLE_ENFORCE_EQ(desc->CheckGuards(), true, "Invalid CPU memory access");
-    return reinterpret_cast<MemoryBlock::Desc*>(block);
+    PADDLE_ASSERT(desc->check_guards());
+    return *reinterpret_cast<const MemoryBlock::Desc*>(block);
   }
 }
 
-void MetadataCache::Save(MemoryBlock* block,
+void MetadataCache::save(MemoryBlock* block,
                          const MemoryBlock::Desc& original_desc) {
   auto desc = original_desc;
-  desc.UpdateGuards();
+  desc.update_guards();
 
   if (uses_gpu_) {
     cache_[block] = desc;
@@ -49,7 +47,7 @@ void MetadataCache::Save(MemoryBlock* block,
   }
 }
 
-void MetadataCache::Invalidate(MemoryBlock* block) {
+void MetadataCache::invalidate(MemoryBlock* block) {
   if (uses_gpu_) {
     cache_.erase(block);
   }

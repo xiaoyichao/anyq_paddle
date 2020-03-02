@@ -14,12 +14,6 @@ limitations under the License. */
 
 #include "paddle/fluid/operators/warpctc_op.h"
 
-#include <memory>
-
-#ifdef PADDLE_WITH_CUDA
-#include "paddle/fluid/platform/cudnn_helper.h"
-#endif
-
 namespace paddle {
 namespace operators {
 
@@ -38,31 +32,22 @@ class WarpCTCOp : public framework::OperatorWithKernel {
                    "Output(Loss) of WarpCTCOp should not be null.");
 
     auto logits_dims = ctx->GetInputDim("Logits");
+    int sequence_width =
+        static_cast<int>(framework::product(logits_dims) / logits_dims[0]);
     int blank = ctx->Attrs().Get<int>("blank");
-    int sequence_width = 0;
-
-    if (ctx->HasInput("LogitsLength")) {
-      sequence_width = logits_dims[2];
-    } else {
-      sequence_width =
-          static_cast<int>(framework::product(logits_dims) / logits_dims[0]);
-    }
     PADDLE_ENFORCE((blank >= 0) && (blank < sequence_width),
                    "The value of Attr(blank) should be in interval [0, %d).",
                    sequence_width);
-
     // TODO(liuyiqun): it is tricky to set the wrong dimension here.
-    ctx->SetOutputDim("Loss", {-1, 1});
+    ctx->SetOutputDim("Loss", {logits_dims[0], 1});
   }
 
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
-    framework::LibraryType library_{framework::LibraryType::kPlain};
-    framework::DataLayout layout_ = framework::DataLayout::kAnyLayout;
     return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "Logits"),
-        ctx.device_context(), layout_, library_);
+        framework::ToDataType(ctx.Input<Tensor>("Logits")->type()),
+        ctx.device_context());
   }
 };
 
@@ -70,32 +55,17 @@ class WarpCTCOpMaker : public framework::OpProtoAndCheckerMaker {
  public:
   void Make() override {
     AddInput("Logits",
-             "(2-D LoDTensor<float>) or (3-D Tensor<float>), the "
-             "unscaled probabilities of variable-length sequences."
-             "When is a 2-D Tensor with LoD information, "
-             "it's shape is [Lp, num_classes + 1], "
-             "where Lp is the sum of all input sequences' length "
-             "and num_classes is the true number of classes "
-             "(not including the blank label)."
-             "When it is 3-D Tensor, it's shape is "
-             "[max_logit_length, batch_size, num_classes + 1], "
-             "where max_logit_length is the length of the longest "
-             "logit sequence.");
+             "(LodTensor, default: LoDTensor<float>), the unscaled "
+             "probabilities of variable-length sequences, which is a 2-D "
+             "Tensor with LoD information. It's shape is "
+             "[Lp, num_classes + 1], where Lp is the sum of all input "
+             "sequences' length and num_classes is the true number of classes "
+             "(not including the blank label).");
     AddInput("Label",
-             "(2-D LoDTensor<int>) or (2-D Tensor<int>), the "
-             "ground truth of variable-length sequence. "
-             "When it is a 2-D Tensor with LoD information, "
-             "it is of the shape [Lg, 1], where Lg is th sum of "
-             "all labels' length."
-             "When it is a 2-D Tensor<int>, it's shape is also [Lg, 1].");
-    AddInput("LogitsLength",
-             "1-D Tensor<int64_t>. "
-             "Input sequence length for Logits when Logits is a 3-D tensor.")
-        .AsDispensable();
-    AddInput("LabelLength",
-             "1-D Tensor<int64_t>. "
-             "Target sequence length for Label when Label is a 2-D tensor.")
-        .AsDispensable();
+             "(LodTensor, default: LoDTensor<int>), the ground truth "
+             "of variable-length sequence, which is a 2-D Tensor with LoD "
+             "information. It is of the shape [Lg, 1], where Lg is th sum of "
+             "all labels' length.");
     AddOutput("WarpCTCGrad",
               "(Tensor, default: Tensor<float>), a temporary "
               "output Tensor to store the gradients of warp-ctc, which is "
@@ -123,38 +93,14 @@ An operator integrating the open-source
 https://arxiv.org/pdf/1512.02595v1.pdf),
 to compute Connectionist Temporal Classification (CTC) loss.
 It can be aliased as softmax with ctc, since a native softmax activation is
-interated to the warp-ctc library, to to normalize values for each row of the
+interated to the warp-ctc library, to to normlize values for each row of the
 input tensor.
 
-More detail of CTC loss can be found by referring to
+More detail of CTC loss can be found by refering to
 [Connectionist Temporal Classification: Labelling Unsegmented Sequence Data with
 Recurrent Neural Networks](
 http://machinelearning.wustl.edu/mlpapers/paper_files/icml2006_GravesFGS06.pdf).
 )DOC");
-  }
-};
-
-template <typename T>
-class WarpCTCGradOpMaker : public framework::SingleGradOpMaker<T> {
- public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
-
- protected:
-  std::unique_ptr<T> Apply() const override {
-    std::unique_ptr<T> op(new T());
-
-    op->SetType("warpctc_grad");
-
-    op->SetInput("WarpCTCGrad", this->Output("WarpCTCGrad"));
-    op->SetInput("Logits", this->Input("Logits"));
-    op->SetInput(framework::GradVarName("Loss"), this->OutputGrad("Loss"));
-
-    op->SetInput("LogitsLength", this->Input("LogitsLength"));
-
-    op->SetOutput(framework::GradVarName("Logits"), this->InputGrad("Logits"));
-
-    op->SetAttrMap(this->Attrs());
-    return op;
   }
 };
 
@@ -175,24 +121,19 @@ class WarpCTCGradOp : public framework::OperatorWithKernel {
  protected:
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
-    return framework::OpKernelType(OperatorWithKernel::IndicateVarDataType(
-                                       ctx, framework::GradVarName("Loss")),
-                                   ctx.device_context());
+    return framework::OpKernelType(
+        framework::ToDataType(ctx.Input<Tensor>("Logits")->type()),
+        ctx.device_context());
   }
 };
-
-DECLARE_NO_NEED_BUFFER_VARS_INFERENCE(WarpCTCGradOpNoNeedBufferVarInference,
-                                      "Logits");
 
 }  // namespace operators
 }  // namespace paddle
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(warpctc, ops::WarpCTCOp, ops::WarpCTCOpMaker,
-                  ops::WarpCTCGradOpMaker<paddle::framework::OpDesc>,
-                  ops::WarpCTCGradOpMaker<paddle::imperative::OpBase>);
-REGISTER_OPERATOR(warpctc_grad, ops::WarpCTCGradOp,
-                  ops::WarpCTCGradOpNoNeedBufferVarInference);
+                  paddle::framework::DefaultGradOpDescMaker<true>);
+REGISTER_OPERATOR(warpctc_grad, ops::WarpCTCGradOp);
 REGISTER_OP_CPU_KERNEL(
     warpctc, ops::WarpCTCKernel<paddle::platform::CPUDeviceContext, float>);
 REGISTER_OP_CPU_KERNEL(

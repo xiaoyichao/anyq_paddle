@@ -62,10 +62,7 @@ class ShrinkRNNMemoryOp : public ArrayOp {
     }
 
     if (dst_num_rows != 0) {
-      out_tensor.mutable_data(place, x_tensor.type());
-      auto dev_ctx = platform::DeviceContextPool::Instance().Get(place);
-      framework::TensorCopy(x_tensor.Slice(0, height), place, *dev_ctx,
-                            &out_tensor);
+      out_tensor.ShareDataWith(x_tensor.Slice(0, height));
     }
   }
 };
@@ -73,12 +70,12 @@ class ShrinkRNNMemoryOp : public ArrayOp {
 class ShrinkRNNMemoryOpProtoMaker : public framework::OpProtoAndCheckerMaker {
  public:
   void Make() override {
-    AddInput("X", "(LoDTensor) The RNN step memory to be shrank.");
+    AddInput("X", "(LoDTensor) The RNN step memory to be shrinked.");
     AddInput("RankTable", "(LoDRankTable) The lod_rank_table of dynamic RNN.");
     AddInput("I",
              "(LoDTensor) The step index. The RNN step memory 'X' will be "
-             "shrank to match the size of the input of the index'th step.");
-    AddOutput("Out", "(LoDTensor) The shrank RNN step memory.");
+             "shrinked to match the size of the input of the index'th step.");
+    AddOutput("Out", "(LoDTensor) The shrinked RNN step memory.");
     AddComment(R"DOC(
 This operator is used to shrink output batch of memory defined in dynamic RNN.
 
@@ -100,11 +97,6 @@ class ShrinkRNNMemoryInferShape : public framework::InferShapeBase {
     PADDLE_ENFORCE(context->HasInput("I"));
     PADDLE_ENFORCE(context->HasInput("RankTable"));
     context->SetOutputDim("Out", context->GetInputDim("X"));
-    // For runtime, output's lod is computed according to input's lod, but
-    // remove the finished sequence. It is set in detail kernel implementation.
-    if (!context->IsRuntime()) {
-      context->ShareLoD("X", /*->*/ "Out");
-    }
   }
 };
 
@@ -156,26 +148,25 @@ class ShrinkRNNMemoryGradInferShape : public framework::InferShapeBase {
   void operator()(framework::InferShapeContext *context) const override {
     PADDLE_ENFORCE(context->HasInput("X"));
     PADDLE_ENFORCE(context->HasOutput(framework::GradVarName("X")));
-
-    context->ShareDim("X", /*->*/ framework::GradVarName("X"));
-    context->ShareLoD("X", /*->*/ framework::GradVarName("X"));
+    context->SetOutputDim(framework::GradVarName("X"),
+                          context->GetInputDim("X"));
+    context->ShareLoD("X", framework::GradVarName("X"));
   }
 };
 
-template <typename T>
-class ShrinkRNNGradOpMaker : public framework::SingleGradOpMaker<T> {
+class ShrinkRNNGradOpMaker : public framework::SingleGradOpDescMaker {
  public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
+  using framework::SingleGradOpDescMaker::SingleGradOpDescMaker;
 
  protected:
-  std::unique_ptr<T> Apply() const override {
-    auto *op = new T();
+  std::unique_ptr<framework::OpDesc> Apply() const override {
+    auto *op = new framework::OpDesc();
     op->SetType("shrink_rnn_memory_grad");
-    op->SetInput("X", this->Input("X"));
-    op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
-    op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
-    op->SetAttrMap(this->Attrs());
-    return std::unique_ptr<T>(op);
+    op->SetInput("X", Input("X"));
+    op->SetInput(framework::GradVarName("Out"), OutputGrad("Out"));
+    op->SetOutput(framework::GradVarName("X"), InputGrad("X"));
+    op->SetAttrMap(Attrs());
+    return std::unique_ptr<framework::OpDesc>(op);
   }
 };
 
@@ -185,8 +176,6 @@ class ShrinkRNNGradOpMaker : public framework::SingleGradOpMaker<T> {
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(shrink_rnn_memory, ops::ShrinkRNNMemoryOp,
                   ops::ShrinkRNNMemoryInferShape,
-                  ops::ShrinkRNNMemoryOpProtoMaker,
-                  ops::ShrinkRNNGradOpMaker<paddle::framework::OpDesc>,
-                  ops::ShrinkRNNGradOpMaker<paddle::imperative::OpBase>);
+                  ops::ShrinkRNNMemoryOpProtoMaker, ops::ShrinkRNNGradOpMaker);
 REGISTER_OPERATOR(shrink_rnn_memory_grad, ops::ShrinkRNNMemoryGradOp,
                   ops::ShrinkRNNMemoryGradInferShape);

@@ -34,9 +34,10 @@ class IsEmptyOp : public framework::OperatorWithKernel {
 
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext &ctx) const override {
-    auto *x = ctx.Input<framework::LoDTensor>("X");
-    return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "X"), x->place());
+    framework::OpKernelType kt = framework::OpKernelType(
+        framework::ToDataType(ctx.Input<framework::LoDTensor>("X")->type()),
+        platform::CPUPlace());
+    return kt;
   }
 };
 
@@ -58,10 +59,9 @@ It will just return product(tensor.ddims()) > 0;
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(
-    is_empty, ops::IsEmptyOp, ops::IsEmptyOpMaker,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
+
+REGISTER_OPERATOR(is_empty, ops::IsEmptyOp, ops::IsEmptyOpMaker,
+                  paddle::framework::EmptyGradOpMaker);
 REGISTER_OP_CPU_KERNEL(
     is_empty, ops::IsEmptyOpKernel<paddle::platform::CPUDeviceContext, float>,
     ops::IsEmptyOpKernel<paddle::platform::CPUDeviceContext, double>,

@@ -37,6 +37,9 @@ void Transpose<DeviceContext, T, Rank>::operator()(
   for (int i = 0; i < Rank; i++) {
     permute[i] = axis[i];
   }
+  auto in_dim = in.dims();
+  auto out_dim = out->dims();
+
   auto eigen_in = framework::EigenTensor<T, Rank>::From(in);
   auto eigen_out = framework::EigenTensor<T, Rank>::From(*out);
   auto* dev = context.eigen_device();
@@ -152,7 +155,7 @@ class RowwiseSum<platform::CPUDeviceContext, T> {
     PADDLE_ENFORCE_EQ(in_dims.size(), 2U);
     auto height = in_dims[0];
     auto size = in_dims[1];
-    PADDLE_ENFORCE_EQ(out->numel(), height);
+    PADDLE_ENFORCE_EQ(out->numel(), size);
 
     T* out_buf = out->mutable_data<T>(out->place());
     const T* in_buf = input.data<T>();

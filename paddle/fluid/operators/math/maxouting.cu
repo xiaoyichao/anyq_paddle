@@ -22,8 +22,8 @@ namespace math {
 template <typename T>
 __global__ void KernelMaxOut(const int nthreads, const T* input_data,
                              const int channels, const int input_height,
-                             const int input_width, const int groups,
-                             const int axis, T* output_data) {
+                             const int input_width, int groups,
+                             T* output_data) {
   const int size = input_height * input_width * channels / groups;
   const int feat_len = input_height * input_width;
   int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -31,22 +31,13 @@ __global__ void KernelMaxOut(const int nthreads, const T* input_data,
   for (int i = index; i < nthreads; i += offset) {
     int batch_idx = i / size;
     int batch_offset = i % size;
-    int channel_idx, feat_idx, data_idx;
-    if (axis == 1) {
-      channel_idx = batch_offset / feat_len;
-      feat_idx = batch_offset % feat_len;
-      data_idx =
-          (batch_idx * size + channel_idx * feat_len) * groups + feat_idx;
-    } else {
-      channel_idx = batch_offset % channels;
-      feat_idx = batch_offset / channels;
-      data_idx =
-          (batch_idx * size + feat_idx * channels + channel_idx) * groups;
-    }
+    int channel_idx = batch_offset / feat_len;
+    int feat_idx = batch_offset % feat_len;
+    int data_idx =
+        (batch_idx * size + channel_idx * feat_len) * groups + feat_idx;
     T ele = static_cast<T>(-FLT_MAX);
     for (int g = 0; g < groups; ++g) {
-      int idx_offset = (axis == 1 ? g * feat_len : g);
-      T x = input_data[data_idx + idx_offset];
+      T x = input_data[data_idx + g * feat_len];
       ele = ele > x ? ele : x;
     }
     output_data[i] = ele;
@@ -57,7 +48,7 @@ __global__ void KernelMaxoutGrad(const int nthreads, const T* input_data,
                                  const T* output_data, const T* output_grad,
                                  T* input_grad, const int channels,
                                  const int input_height, const int input_width,
-                                 const int groups, const int axis) {
+                                 int groups) {
   const int size = input_height * input_width * channels / groups;
   const int feat_len = input_height * input_width;
   int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -65,24 +56,15 @@ __global__ void KernelMaxoutGrad(const int nthreads, const T* input_data,
   for (int i = index; i < nthreads; i += offset) {
     int batch_idx = i / size;
     int batch_offset = i % size;
-    int channel_idx, feat_idx, data_idx;
-    if (axis == 1) {
-      channel_idx = batch_offset / feat_len;
-      feat_idx = batch_offset % feat_len;
-      data_idx =
-          (batch_idx * size + channel_idx * feat_len) * groups + feat_idx;
-    } else {
-      channel_idx = batch_offset % channels;
-      feat_idx = batch_offset / channels;
-      data_idx =
-          (batch_idx * size + feat_idx * channels + channel_idx) * groups;
-    }
+    int channel_idx = batch_offset / feat_len;
+    int feat_idx = batch_offset % feat_len;
+    int data_idx =
+        (batch_idx * size + channel_idx * feat_len) * groups + feat_idx;
     int max_index = -1;
     bool continue_match = true;
     for (int g = 0; g < groups && continue_match; ++g) {
-      int idx_offset = (axis == 1 ? g * feat_len : g);
-      if (input_data[data_idx + idx_offset] == output_data[i]) {
-        max_index = data_idx + idx_offset;
+      if (input_data[data_idx + g * feat_len] == output_data[i]) {
+        max_index = data_idx + g * feat_len;
         continue_match = false;
         break;
       }
@@ -93,19 +75,21 @@ __global__ void KernelMaxoutGrad(const int nthreads, const T* input_data,
   }
 }
 /*
- * All tensors are in NCHW or NHWC format.
+ * All tensors are in NCHW format.
  */
 template <typename T>
 class MaxOutFunctor<platform::CUDADeviceContext, T> {
  public:
   void operator()(const platform::CUDADeviceContext& context,
                   const framework::Tensor& input, framework::Tensor* output,
-                  const int groups, const int axis) {
+                  int groups) {
     const int batch_size = input.dims()[0];
-    const int input_channels = input.dims()[axis];
-    const int input_height = (axis == 1 ? input.dims()[2] : input.dims()[1]);
-    const int input_width = (axis == 1 ? input.dims()[3] : input.dims()[2]);
-    const int output_channels = output->dims()[axis];
+    const int input_channels = input.dims()[1];
+    const int input_height = input.dims()[2];
+    const int input_width = input.dims()[3];
+    const int output_channels = output->dims()[1];
+    const int output_height = output->dims()[2];
+    const int output_width = output->dims()[3];
 
     const T* input_data = input.data<T>();
     T* output_data = output->mutable_data<T>(context.GetPlace());
@@ -116,11 +100,11 @@ class MaxOutFunctor<platform::CUDADeviceContext, T> {
 
     KernelMaxOut<T><<<grid, threads, 0, context.stream()>>>(
         nthreads, input_data, input_channels, input_height, input_width, groups,
-        axis, output_data);
+        output_data);
   }
 };
 /*
- * All tensors are in NCHW or NHWC format.
+ * All tensors are in NCHW format.
  */
 template <typename T>
 class MaxOutGradFunctor<platform::CUDADeviceContext, T> {
@@ -128,13 +112,14 @@ class MaxOutGradFunctor<platform::CUDADeviceContext, T> {
   void operator()(const platform::CUDADeviceContext& context,
                   const framework::Tensor& input, framework::Tensor* input_grad,
                   const framework::Tensor& output,
-                  const framework::Tensor& output_grad, const int groups,
-                  const int axis) {
+                  const framework::Tensor& output_grad, int groups) {
     const int batch_size = input.dims()[0];
-    const int input_channels = input.dims()[axis];
-    const int input_height = (axis == 1 ? input.dims()[2] : input.dims()[1]);
-    const int input_width = (axis == 1 ? input.dims()[3] : input.dims()[2]);
-    const int output_channels = output.dims()[axis];
+    const int input_channels = input.dims()[1];
+    const int input_height = input.dims()[2];
+    const int input_width = input.dims()[3];
+    const int output_channels = output.dims()[1];
+    const int output_height = output.dims()[2];
+    const int output_width = output.dims()[3];
 
     const T* input_data = input.data<T>();
     const T* output_data = output.data<T>();
@@ -147,7 +132,7 @@ class MaxOutGradFunctor<platform::CUDADeviceContext, T> {
 
     KernelMaxoutGrad<T><<<grid, threads, 0, context.stream()>>>(
         nthreads, input_data, output_data, output_grad_data, input_grad_data,
-        input_channels, input_height, input_width, groups, axis);
+        input_channels, input_height, input_width, groups);
   }
 };
 

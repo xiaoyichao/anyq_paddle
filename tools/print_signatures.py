@@ -17,62 +17,31 @@ Print all signature of a python module in alphabet order.
 Usage:
     ./print_signature  "paddle.fluid" > signature.txt
 """
-from __future__ import print_function
-
 import importlib
 import inspect
 import collections
 import sys
 import pydoc
-import hashlib
 
 member_dict = collections.OrderedDict()
-
-# APIs that should not be printed into API.spec 
-omitted_list = [
-    "paddle.fluid.LoDTensor.set",  # Do not know why it should be omitted
-    "paddle.fluid.io.ComposeNotAligned",
-    "paddle.fluid.io.ComposeNotAligned.__init__",
-]
-
-
-def md5(doc):
-    hash = hashlib.md5()
-    hash.update(str(doc).encode('utf-8'))
-    return hash.hexdigest()
-
-
-def queue_dict(member, cur_name):
-    if cur_name in omitted_list:
-        return
-
-    doc = ('document', md5(member.__doc__))
-
-    if inspect.isclass(member):
-        args = member.__module__ + "." + member.__name__
-    else:
-        try:
-            args = inspect.getargspec(member)
-        except TypeError:  # special for PyBind method
-            args = "  ".join([
-                line.strip() for line in pydoc.render_doc(member).split('\n')
-                if "->" in line
-            ])
-    member_dict[cur_name] = (args, doc)
 
 
 def visit_member(parent_name, member):
     cur_name = ".".join([parent_name, member.__name__])
     if inspect.isclass(member):
-        queue_dict(member, cur_name)
         for name, value in inspect.getmembers(member):
             if hasattr(value, '__name__') and (not name.startswith("_") or
                                                name == "__init__"):
                 visit_member(cur_name, value)
     elif callable(member):
-        queue_dict(member, cur_name)
-    elif inspect.isgetsetdescriptor(member):
-        return
+        try:
+            member_dict[cur_name] = inspect.getargspec(member)
+        except TypeError:  # special for PyBind method
+            member_dict[cur_name] = "  ".join([
+                line.strip() for line in pydoc.render_doc(member).split('\n')
+                if "->" in line
+            ])
+
     else:
         raise RuntimeError("Unsupported generate signature of member, type {0}".
                            format(str(type(member))))
@@ -92,9 +61,7 @@ def visit_all_module(mod):
             visit_member(mod.__name__, instance)
 
 
-modules = sys.argv[1].split(",")
-for m in modules:
-    visit_all_module(importlib.import_module(m))
+visit_all_module(importlib.import_module(sys.argv[1]))
 
 for name in member_dict:
-    print(name, member_dict[name])
+    print name, member_dict[name]

@@ -12,15 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import numpy as np
 
 import paddle.fluid.core as core
 from paddle.fluid.op import Operator
 
 
-def create_op(scope, op_type, inputs, outputs, attrs, cache_list=None):
+def as_lodtensor(np_array, lod, place):
+    tensor = core.LoDTensor()
+    tensor.set(np_value, place)
+    if lod is not None:
+        tensor.set_recursive_sequence_lengths(lod)
+    return tensor
+
+
+def create_op(scope, op_type, inputs, outputs, attrs):
     kwargs = dict()
 
     op_maker = core.op_proto_and_checker_maker
@@ -43,11 +49,6 @@ def create_op(scope, op_type, inputs, outputs, attrs, cache_list=None):
                     __create_var__(in_name, sub_in_name)
             else:
                 __create_var__(in_name, in_name)
-    if cache_list != None and isinstance(cache_list, list):
-        for name in cache_list:
-            kwargs[name] = []
-            scope.var(name)
-            kwargs[name].append(name)
 
     for out_name, out_dup in Operator.get_op_outputs(op_type):
         if out_name in outputs:
@@ -74,7 +75,7 @@ def set_input(scope, op, inputs, place):
             if isinstance(var, tuple):
                 tensor.set_recursive_sequence_lengths(var[1])
                 var = var[0]
-            tensor._set_dims(var.shape)
+            tensor.set_dims(var.shape)
             tensor.set(var, place)
         elif isinstance(var, float):
             scope.find_var(var_name).set_float(var)
@@ -103,7 +104,6 @@ def append_input_output(block, op_proto, np_list, is_input, dtype):
         if name not in np_list:
             assert var_proto.intermediate, "{} not found".format(name)
         else:
-            # inferece the dtype from numpy value.
             np_value = np_list[name]
             if isinstance(np_value, tuple):
                 dtype = np_value[0].dtype
@@ -122,9 +122,9 @@ def append_input_output(block, op_proto, np_list, is_input, dtype):
     var_dict = {}
     for var_proto in proto_list:
         var_name = str(var_proto.name)
-        if (var_name not in np_list) and var_proto.dispensable:
-            continue
         if is_input:
+            if (var_name not in np_list) and var_proto.dispensable:
+                continue
             assert (var_name in np_list) or (var_proto.dispensable), \
                 "Missing {} as input".format(var_name)
         if var_proto.duplicable:
@@ -142,7 +142,10 @@ def append_input_output(block, op_proto, np_list, is_input, dtype):
 
 
 def append_loss_ops(block, output_names):
-    mean_inputs = list(map(block.var, output_names))
+    mean_inputs = map(block.var, output_names)
+    # for item in mean_inputs:
+    #     print(item)
+    #     print("Item", item.dtype)
 
     if len(mean_inputs) == 1:
         loss = block.create_var(dtype=mean_inputs[0].dtype, shape=[1])

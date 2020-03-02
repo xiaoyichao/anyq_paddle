@@ -20,24 +20,15 @@ The script fetch and preprocess movie_reviews data set that provided by NLTK
 TODO(yuyang18): Complete dataset.
 """
 
-from __future__ import print_function
-
-import six
 import collections
 from itertools import chain
 
-import os
 import nltk
 from nltk.corpus import movie_reviews
-import zipfile
-from functools import cmp_to_key
 
 import paddle.dataset.common
 
-URL = "https://corpora.bj.bcebos.com/movie_reviews%2Fmovie_reviews.zip"
-MD5 = '155de2b77c6834dd8eea7cbe88e93acb'
-
-__all__ = ['train', 'test', 'get_word_dict']
+__all__ = ['train', 'test', 'get_word_dict', 'convert']
 NUM_TRAINING_INSTANCES = 1600
 NUM_TOTAL_INSTANCES = 2000
 
@@ -47,24 +38,16 @@ def download_data_if_not_yet():
     Download the data set, if the data set is not download.
     """
     try:
-        # download and extract movie_reviews.zip
-        paddle.dataset.common.download(
-            URL, 'corpora', md5sum=MD5, save_name='movie_reviews.zip')
-        path = os.path.join(paddle.dataset.common.DATA_HOME, 'corpora')
-        filename = os.path.join(path, 'movie_reviews.zip')
-        zip_file = zipfile.ZipFile(filename)
-        zip_file.extractall(path)
-        zip_file.close()
         # make sure that nltk can find the data
         if paddle.dataset.common.DATA_HOME not in nltk.data.path:
             nltk.data.path.append(paddle.dataset.common.DATA_HOME)
         movie_reviews.categories()
     except LookupError:
-        print("Downloading movie_reviews data set, please wait.....")
+        print "Downloading movie_reviews data set, please wait....."
         nltk.download(
             'movie_reviews', download_dir=paddle.dataset.common.DATA_HOME)
-        print("Download data set success.....")
-        print("Path is " + nltk.data.find('corpora/movie_reviews').path)
+        print "Download data set success....."
+        print "Path is " + nltk.data.find('corpora/movie_reviews').path
 
 
 def get_word_dict():
@@ -81,8 +64,8 @@ def get_word_dict():
         for field in movie_reviews.fileids(category):
             for words in movie_reviews.words(field):
                 word_freq_dict[words] += 1
-    words_sort_list = list(six.iteritems(word_freq_dict))
-    words_sort_list.sort(key=cmp_to_key(lambda a, b: b[1] - a[1]))
+    words_sort_list = word_freq_dict.items()
+    words_sort_list.sort(cmp=lambda a, b: b[1] - a[1])
     for index, word in enumerate(words_sort_list):
         words_freq_sorted.append((word[0], index))
     return words_freq_sorted
@@ -97,8 +80,7 @@ def sort_files():
     files_list = list()
     neg_file_list = movie_reviews.fileids('neg')
     pos_file_list = movie_reviews.fileids('pos')
-    files_list = list(
-        chain.from_iterable(list(zip(neg_file_list, pos_file_list))))
+    files_list = list(chain.from_iterable(zip(neg_file_list, pos_file_list)))
     return files_list
 
 
@@ -148,3 +130,11 @@ def test():
 
 def fetch():
     nltk.download('movie_reviews', download_dir=paddle.dataset.common.DATA_HOME)
+
+
+def convert(path):
+    """
+    Converts dataset to recordio format
+    """
+    paddle.dataset.common.convert(path, train, 1000, "sentiment_train")
+    paddle.dataset.common.convert(path, test, 1000, "sentiment_test")

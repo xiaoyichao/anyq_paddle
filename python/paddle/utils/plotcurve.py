@@ -37,14 +37,13 @@ optional arguments:
 
 The keys must be in the order of paddle output(!!!).
 
-For example, paddle.INFO contains the following log
+For example, paddle.INFO contrains the following log
    I0406 21:26:21.325584  3832 Trainer.cpp:601]  Pass=0 Batch=7771 AvgCost=0.624935 Eval: error=0.260972
 
 To use this script to generate plot for AvgCost, error:
    python plotcurve.py -i paddle.INFO -o figure.png AvgCost error
 """
 
-import six
 import sys
 import matplotlib
 # the following line is added immediately after import matplotlib
@@ -92,7 +91,7 @@ def plot_paddle_curve(keys, inputfile, outputfile, format='png',
         sys.stderr.write("No data to plot. Exiting!\n")
         return
     m = len(keys) + 1
-    for i in six.moves.xrange(1, m):
+    for i in xrange(1, m):
         pyplot.plot(
             x[:, 0],
             x[:, i],

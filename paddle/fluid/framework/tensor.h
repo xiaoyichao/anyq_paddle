@@ -18,11 +18,10 @@ limitations under the License. */
 #include <cstring>
 #include <memory>
 #include <typeindex>
-#include <utility>
 #include <vector>
+
 #include "paddle/fluid/framework/data_layout.h"
 #include "paddle/fluid/framework/ddim.h"
-#include "paddle/fluid/framework/framework.pb.h"
 #include "paddle/fluid/memory/memory.h"
 #include "paddle/fluid/platform/device_context.h"
 #include "paddle/fluid/platform/enforce.h"
@@ -38,9 +37,9 @@ class Tensor {
 #ifdef PADDLE_WITH_MKLDNN
 
  public:
-  inline mkldnn::memory::format_tag format() const { return format_; }
+  inline mkldnn::memory::format format() const { return format_; }
 
-  inline void set_format(const mkldnn::memory::format_tag format) {
+  inline void set_format(const mkldnn::memory::format format) {
     format_ = format;
   }
 
@@ -54,7 +53,7 @@ class Tensor {
    *       this field.
    */
 
-  mkldnn::memory::format_tag format_ = mkldnn::memory::format_tag::undef;
+  mkldnn::memory::format format_ = mkldnn::memory::format::format_undef;
 #endif
 
  public:
@@ -68,9 +67,12 @@ class Tensor {
   friend struct EigenVector;
 
  public:
-  Tensor() : type_(proto::VarType::FP32), offset_(0) {}
+  Tensor() : offset_(0) {}
 
-  explicit Tensor(const proto::VarType::Type&);
+  /*! Constructor with place should only be used in pybind. */
+  explicit Tensor(const platform::Place& place) : offset_(0) {
+    holder_->set_place(place);
+  }
 
   /*! Return a pointer to mutable memory block. */
   template <typename T>
@@ -80,32 +82,29 @@ class Tensor {
   template <typename T>
   const T* data() const;
 
-  inline bool IsInitialized() const;
+  bool IsInitialized() const;
 
   /**
    * @brief   Return a pointer to mutable memory block.
    * @note    If not exist, then allocation.
    */
   template <typename T>
-  T* mutable_data(const platform::Place& place, size_t requested_size = 0);
+  T* mutable_data(platform::Place place);
 
-  void* mutable_data(const platform::Place& place, proto::VarType::Type type,
-                     size_t requested_size = 0);
+  void* mutable_data(platform::Place place, std::type_index type);
 
-  void* mutable_data(const platform::Place& place, size_t requested_size = 0);
+  void* mutable_data(platform::Place place);
 
   /**
    * @brief     Return a pointer to mutable memory block.
    *
-   * @param[in] dims           The dimensions of the memory block.
-   * @param[in] place          The place of the memory block.
-   * @param[in] requested_size The size of the block in bytes.
+   * @param[in] dims    The dimensions of the memory block.
+   * @param[in] place   The place of the memory block.
    *
    * @note      If not exist, then allocation.
    */
   template <typename T>
-  T* mutable_data(const DDim& dims, const platform::Place& place,
-                  size_t requested_size = 0);
+  T* mutable_data(DDim dims, platform::Place place);
 
   /*! Return the dimensions of the memory block. */
   const DDim& dims() const;
@@ -127,18 +126,18 @@ class Tensor {
    * @param[in] end_idx     The index of the end row(exclusive) to slice.
    *                        The index number begins from 0.
    */
-  Tensor Slice(int64_t begin_idx, int64_t end_idx) const;
+  Tensor Slice(int begin_idx, int end_idx) const;
 
-  const platform::Place& place() const {
+  platform::Place place() const {
     PADDLE_ENFORCE_NOT_NULL(
         holder_, "Tensor not initialized yet when Tensor::place() is called.");
     return holder_->place();
   }
 
-  proto::VarType::Type type() const {
+  std::type_index type() const {
     PADDLE_ENFORCE_NOT_NULL(
         holder_, "Tensor not initialized yet when Tensor::type() is called.");
-    return type_;
+    return holder_->type();
   }
 
   // memory size returns the holding memory size in byte.
@@ -150,32 +149,56 @@ class Tensor {
 
   void set_layout(const DataLayout layout) { layout_ = layout; }
 
-  void clear() {
-    holder_ = nullptr;
-    offset_ = 0;
-  }
-
-  void ShareBufferWith(const Tensor& tensor) {
-    holder_ = tensor.holder_;
-    offset_ = tensor.offset_;
-  }
-
-  const std::shared_ptr<memory::Allocation>& Holder() const { return holder_; }
-  size_t offset() const { return offset_; }
-
-  std::shared_ptr<memory::Allocation> MoveMemoryHolder() {
-    return std::move(holder_);
-  }
-
-  void ResetHolder(std::shared_ptr<memory::Allocation> holder);
-
-  void ResetHolderWithType(std::shared_ptr<memory::Allocation> holder,
-                           const proto::VarType::Type type);
-
  private:
+  /**
+   * @note    Placeholder hides type T, so it doesn't appear as a template
+   *          parameter of Variable.
+   */
+  struct Placeholder {
+    virtual ~Placeholder() = default;
+    virtual void* ptr() const = 0;
+    virtual size_t size() const = 0;
+    virtual std::type_index type() const = 0;
+    virtual platform::Place place() const = 0;
+    virtual void set_type(std::type_index type) = 0;
+    virtual void set_place(platform::Place place) = 0;
+  };
+
+  template <typename Place>
+  struct PlaceholderImpl : public Placeholder {
+    PlaceholderImpl(Place place, size_t size, std::type_index type)
+        : ptr_(static_cast<uint8_t*>(memory::Alloc(place, size)),
+               memory::PODDeleter<uint8_t, Place>(place)),
+          place_(place),
+          size_(size),
+          type_(type) {
+      PADDLE_ENFORCE_NOT_NULL(ptr_, "Insufficient %s memory to allocation.",
+                              (is_cpu_place(place_) ? "CPU" : "GPU"));
+    }
+
+    virtual size_t size() const { return size_; }
+    virtual platform::Place place() const { return place_; }
+    virtual void* ptr() const { return static_cast<void*>(ptr_.get()); }
+    virtual std::type_index type() const { return type_; }
+    virtual void set_type(std::type_index type) { type_ = type; }
+    virtual void set_place(platform::Place place) { place_ = place; }
+
+    /*! the pointer of memory block. */
+    std::unique_ptr<uint8_t, memory::PODDeleter<uint8_t, Place>> ptr_;
+
+    /*! the place of memory block. */
+    platform::Place place_;
+
+    /*! the size of memory block. */
+    size_t size_;
+
+    /* the current type of memory */
+    std::type_index type_;
+  };
+
   /*! holds the memory block if allocated. */
-  std::shared_ptr<memory::Allocation> holder_;
-  proto::VarType::Type type_;
+  std::shared_ptr<Placeholder> holder_;
+
   /**
    * @brief points to elements dimensions.
    *

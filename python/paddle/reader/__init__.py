@@ -38,8 +38,9 @@ items. It can be any function with no parameter that creates a iterable
 Element produced from the iterable should be a **single** entry of data,
 **not** a mini batch. That entry of data could be a single item, or a tuple of
 items.
-Item should be of supported type (e.g., numpy array or list/tuple of float 
-or int).
+Item should be of `supported type <http://www.paddlepaddle.org/doc/ui/data_provider
+/pydataprovider2.html?highlight=dense_vector#input-types>`_ (e.g., numpy 1d
+array of float32, int, list of int)
 
 An example implementation for single item data reader creator:
 
@@ -61,9 +62,13 @@ An example implementation for multiple item data reader creator:
                 yield numpy.random.uniform(-1, 1, size=width*height), label
     return reader
 
+
+TODO(yuyang18): Should we add whole design doc here?
 """
 
-import paddle.reader.decorator
-from paddle.reader.decorator import *
+import decorator
+from decorator import *
 
-__all__ = decorator.__all__
+import creator
+
+__all__ = decorator.__all__ + ['creator']

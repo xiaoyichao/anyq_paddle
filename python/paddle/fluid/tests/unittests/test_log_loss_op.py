@@ -12,26 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
 
 
-def sigmoid_array(x):
-    return 1 / (1 + np.exp(-x))
-
-
 class TestLogLossOp(OpTest):
     def setUp(self):
         self.op_type = 'log_loss'
-        samples_num = 100
+        samples_num = 32
 
-        x = np.random.random((samples_num, 1)).astype("float32")
-        predicted = sigmoid_array(x)
+        predicted = np.random.uniform(0.1, 1.0,
+                                      (samples_num, 1)).astype("float32")
         labels = np.random.randint(0, 2, (samples_num, 1)).astype("float32")
-        epsilon = 1e-7
+        epsilon = 1e-4
         self.inputs = {
             'Predicted': predicted,
             'Labels': labels,

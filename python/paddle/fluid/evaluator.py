@@ -12,17 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import warnings
 import numpy as np
 
-from . import layers
-from .framework import Program, Variable, program_guard
-from . import unique_name
-from .layer_helper import LayerHelper
-from .initializer import Constant
-from .layers import detection
+import layers
+from framework import Program, Variable, program_guard
+import unique_name
+from layer_helper import LayerHelper
+from initializer import Constant
 
 __all__ = [
     'ChunkEvaluator',
@@ -224,7 +221,7 @@ class EditDistance(Evaluator):
 
     Args:
         input: the sequences predicted by network.
-        label: the target sequences which must have same sequence count
+        label: the target sequences which must has same sequence count
         with input.
         ignored_tokens(list of int): Tokens that should be removed before
         calculating edit distance.
@@ -263,7 +260,7 @@ class EditDistance(Evaluator):
 
         zero = layers.fill_constant(shape=[1], value=0.0, dtype='float32')
         compare_result = layers.equal(distances, zero)
-        compare_result_int = layers.cast(x=compare_result, dtype='int64')
+        compare_result_int = layers.cast(x=compare_result, dtype='int')
         seq_right_count = layers.reduce_sum(compare_result_int)
         instance_error_count = layers.elementwise_sub(
             x=seq_num, y=seq_right_count)
@@ -317,18 +314,18 @@ class DetectionMAP(Evaluator):
         gt_label (Variable): The ground truth label index, which is a LoDTensor
             with shape [N, 1].
         gt_box (Variable): The ground truth bounding box (bbox), which is a
-            LoDTensor with shape [N, 4]. The layout is [xmin, ymin, xmax, ymax].
+            LoDTensor with shape [N, 6]. The layout is [xmin, ymin, xmax, ymax].
         gt_difficult (Variable|None): Whether this ground truth is a difficult
             bounding bbox, which can be a LoDTensor [N, 1] or not set. If None,
             it means all the ground truth labels are not difficult bbox.
         class_num (int): The class number.
         background_label (int): The index of background label, the background
             label will be ignored. If set to -1, then all categories will be
-            considered, 0 by default.
+            considered, 0 by defalut.
         overlap_threshold (float): The threshold for deciding true/false
-            positive, 0.5 by default.
+            positive, 0.5 by defalut.
         evaluate_difficult (bool): Whether to consider difficult ground truth
-            for evaluation, True by default. This argument does not work when
+            for evaluation, True by defalut. This argument does not work when
             gt_difficult is None.
         ap_version (string): The average precision calculation ways, it must be
             'integral' or '11point'. Please check
@@ -375,7 +372,7 @@ class DetectionMAP(Evaluator):
             label = layers.concat([gt_label, gt_box], axis=1)
 
         # calculate mean average precision (mAP) of current mini-batch
-        map = detection.detection_map(
+        map = layers.detection_map(
             input,
             label,
             class_num,
@@ -397,7 +394,7 @@ class DetectionMAP(Evaluator):
         self.has_state = var
 
         # calculate accumulative mAP
-        accum_map = detection.detection_map(
+        accum_map = layers.detection_map(
             input,
             label,
             class_num,

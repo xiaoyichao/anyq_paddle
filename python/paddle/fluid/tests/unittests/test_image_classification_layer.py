@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 
 import paddle.fluid as fluid
@@ -45,7 +43,7 @@ class TestLayer(unittest.TestCase):
             hidden2 = fluid.layers.fc(input=hidden1, size=128, act='relu')
             fluid.layers.batch_norm(input=hidden2)
 
-        print(str(main_program))
+        print str(main_program)
 
     def test_dropout_layer(self):
         main_program = Program()
@@ -55,7 +53,7 @@ class TestLayer(unittest.TestCase):
                 name='pixel', shape=[3, 48, 48], dtype='float32')
             fluid.layers.dropout(x=images, dropout_prob=0.5)
 
-        print(str(main_program))
+        print str(main_program)
 
     def test_img_conv_group(self):
         main_program = Program()
@@ -67,7 +65,7 @@ class TestLayer(unittest.TestCase):
             conv1 = conv_block(images, 64, 2, [0.3, 0])
             conv_block(conv1, 256, 3, [0.4, 0.4, 0])
 
-        print(str(main_program))
+        print str(main_program)
 
     def test_elementwise_add_with_act(self):
         main_program = Program()

@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #include "paddle/fluid/operators/top_k_op.h"
-#include <memory>
 
 namespace paddle {
 namespace operators {
@@ -22,7 +21,7 @@ class TopkOp : public framework::OperatorWithKernel {
  public:
   using framework::OperatorWithKernel::OperatorWithKernel;
 
-  void InferShape(framework::InferShapeContext* ctx) const override {
+  void InferShape(framework::InferShapeContext *ctx) const override {
     PADDLE_ENFORCE(ctx->HasInput("X"),
                    "Input(X) of TopkOp should not be null.");
     PADDLE_ENFORCE(ctx->HasOutput("Out"),
@@ -35,11 +34,8 @@ class TopkOp : public framework::OperatorWithKernel {
 
     PADDLE_ENFORCE_GE(k, 1, "k must >= 1");
     PADDLE_ENFORCE_GE(input_dims.size(), 1, "input must have >= 1d shape");
-
-    if (ctx->IsRuntime()) {
-      PADDLE_ENFORCE_GE(input_dims[input_dims.size() - 1], k,
-                        "input must have >= k columns");
-    }
+    PADDLE_ENFORCE_GE(input_dims[input_dims.size() - 1], k,
+                      "input must have >= k columns");
 
     framework::DDim dims = input_dims;
     dims[dims.size() - 1] = k;
@@ -48,27 +44,13 @@ class TopkOp : public framework::OperatorWithKernel {
     ctx->ShareLoD("X", "Out");
     ctx->ShareLoD("X", "Indices");
   }
-
- protected:
-  framework::OpKernelType GetExpectedKernelType(
-      const framework::ExecutionContext& ctx) const override {
-    framework::LibraryType library_{framework::LibraryType::kPlain};
-    framework::DataLayout layout_ = framework::DataLayout::kAnyLayout;
-    return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "X"), ctx.device_context(),
-        layout_, library_);
-  }
 };
 
 class TopkOpMaker : public framework::OpProtoAndCheckerMaker {
  public:
   void Make() override {
     AddInput("X", "(Tensor) The input of Topk op");
-    AddInput("K",
-             "(Tensor)  Number of top elements to look for along "
-             "the last dimension (along each row for matrices).")
-        .AsDispensable();
-    AddOutput("Out", "(Tensor) The output tensor of Topk op");
+    AddOutput("Out", "(Tensor) The output tensor of Topk op").Reuse("X");
     AddOutput("Indices", "(Tensor) The indices of Topk elements of input");
     AddComment(R"DOC(
 Top K operator
@@ -85,67 +67,12 @@ For matrices, this operator computes the top k entries in each row. )DOC");
   }
 };
 
-class TopkOpGrad : public framework::OperatorWithKernel {
- public:
-  using framework::OperatorWithKernel::OperatorWithKernel;
-  void InferShape(framework::InferShapeContext* ctx) const override {
-    PADDLE_ENFORCE_EQ(
-        ctx->HasInput("X"), true,
-        platform::errors::InvalidArgument("Input(X) should be not null"));
-    PADDLE_ENFORCE_EQ(
-        ctx->HasInput("Indices"), true,
-        platform::errors::InvalidArgument("Input(Indices) should be not null"));
-    PADDLE_ENFORCE_EQ(ctx->HasInput(framework::GradVarName("Out")), true,
-                      platform::errors::InvalidArgument(
-                          "Grad Input(Out) should be not null"));
-    PADDLE_ENFORCE_EQ(
-        ctx->HasOutput(framework::GradVarName("X")), true,
-        platform::errors::InvalidArgument("Grad Output(X) should be not null"));
-
-    auto x_dims = ctx->GetInputDim("X");
-    ctx->SetOutputDim(framework::GradVarName("X"), x_dims);
-  }
-
- protected:
-  framework::OpKernelType GetExpectedKernelType(
-      const framework::ExecutionContext& ctx) const override {
-    auto data_type = OperatorWithKernel::IndicateVarDataType(
-        ctx, framework::GradVarName("Out"));
-    return framework::OpKernelType(data_type, ctx.device_context());
-  }
-};
-
-template <typename T>
-class TopkGradOpMaker : public framework::SingleGradOpMaker<T> {
- public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
-
- protected:
-  std::unique_ptr<T> Apply() const override {
-    std::unique_ptr<T> op(new T());
-    op->SetType("top_k_grad");
-    op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
-    op->SetInput("X", this->Input("X"));
-    op->SetInput("Indices", this->Output("Indices"));
-    op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
-    return op;
-  }
-};
-
 }  // namespace operators
 }  // namespace paddle
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(top_k, ops::TopkOp, ops::TopkOpMaker,
-                  ops::TopkGradOpMaker<paddle::framework::OpDesc>,
-                  ops::TopkGradOpMaker<paddle::imperative::OpBase>);
-
-REGISTER_OPERATOR(top_k_grad, ops::TopkOpGrad);
-
+                  paddle::framework::EmptyGradOpMaker);
 REGISTER_OP_CPU_KERNEL(top_k,
                        ops::TopkKernel<paddle::platform::CPUPlace, float>,
                        ops::TopkKernel<paddle::platform::CPUPlace, double>);
-
-REGISTER_OP_CPU_KERNEL(top_k_grad,
-                       ops::TopkGradKernel<paddle::platform::CPUPlace, float>,
-                       ops::TopkGradKernel<paddle::platform::CPUPlace, double>);

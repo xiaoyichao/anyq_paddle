@@ -82,12 +82,8 @@ class ProtoEncodeHelper {
       : base_(buf), p_(buf), limit_(base_ + max_size) {}
 
   ~ProtoEncodeHelper() {
-#define REPLACE_ENFORCE_GLOG 1
     // Make sure callers didn't do operations that went over max_size promised
-    if (paddle::platform::is_error(p_ <= limit_)) {
-      paddle::platform::throw_on_error(p_ <= limit_, "");
-    }
-#undef REPLACE_ENFORCE_GLOG
+    PADDLE_ENFORCE_LE(p_, limit_);
   }
 
   const char* data() const { return base_; }

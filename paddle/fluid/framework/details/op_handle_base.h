@@ -13,44 +13,26 @@
 // limitations under the License.
 
 #pragma once
-#include <map>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
+
 #include "paddle/fluid/framework/details/var_handle.h"
-#include "paddle/fluid/framework/ir/node.h"
 #include "paddle/fluid/platform/device_context.h"
 #include "paddle/fluid/platform/macros.h"
 
 namespace paddle {
 namespace framework {
-
-class Scope;
-
 namespace details {
 
-// Wraps ir::Node and provide helper utilities.
-// It's responsible for populating necessary fields of ir::Node.
+constexpr char kLocalExecScopeName[] = "@LCOAL_SCOPE@";
+
 class OpHandleBase {
  public:
-  /**
-   * NOTE(zjl): Some op should have higher priority than others.
-   * The higher priority op would run first without switching
-   * threads in Executor.
-   */
-  enum Priority { kHighest = 0, kNormal = 1 };
+  OpHandleBase() {}
 
-  // Owned by `node`. No need to be deleted explicitly.
-  explicit OpHandleBase(ir::Node *node) : node_(node) {
-    node_->WrappedBy(this);
-  }
-
-  virtual ~OpHandleBase() PADDLE_MAY_THROW;
+  virtual ~OpHandleBase();
 
   std::string DebugString() const;
-
-  virtual Priority GetPriority() const { return kNormal; }
 
   virtual std::string Name() const = 0;
 
@@ -79,11 +61,7 @@ class OpHandleBase {
   virtual bool IsMultiDeviceTransfer() { return false; }
 
   const platform::DeviceContext *DeviceContext(platform::Place place) {
-    auto it = dev_ctxes_.find(place);
-    return it != dev_ctxes_.end() ? it->second : nullptr;
-  }
-  const std::map<platform::Place, platform::DeviceContext *> &DeviceContext() {
-    return dev_ctxes_;
+    return dev_ctxes_[place];
   }
 
   void SetDeviceContext(platform::Place place, platform::DeviceContext *ctx_) {
@@ -100,22 +78,11 @@ class OpHandleBase {
     return res.size();
   }
 
-  size_t NotReadyInputSize() const;
-
   const std::vector<VarHandleBase *> &Outputs() const { return outputs_; }
 
   size_t NoDummyInputSize() const;
 
-  ir::Node *Node() { return node_; }
-
-  const ir::Node *Node() const { return node_; }
-
-  void SetLocalExecScopes(
-      const std::unordered_map<Scope *, Scope *> &scope_map);
-
  protected:
-  virtual std::vector<Scope *> GetLocalScopes() = 0;
-
   void RunAndRecordEvent(const std::function<void()> &callback);
 
   void RunAndRecordEvent(platform::Place p,
@@ -123,14 +90,11 @@ class OpHandleBase {
 
   virtual void RunImpl() = 0;
 
-  virtual void InitCUDA();
-
-  ir::Node *node_;
   std::vector<VarHandleBase *> inputs_;
   std::vector<VarHandleBase *> outputs_;
-  std::map<platform::Place, platform::DeviceContext *> dev_ctxes_;
-
-  std::vector<Scope *> local_exec_scopes_;
+  std::unordered_map<platform::Place, platform::DeviceContext *,
+                     platform::PlaceHash>
+      dev_ctxes_;
 
 #ifdef PADDLE_WITH_CUDA
   std::unordered_map<int, cudaEvent_t> events_;

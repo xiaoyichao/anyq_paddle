@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import contextlib
 import math
 import numpy as np
@@ -38,7 +36,7 @@ depth = 8
 mix_hidden_lr = 1e-3
 
 IS_SPARSE = True
-PASS_NUM = 2
+PASS_NUM = 10
 BATCH_SIZE = 10
 
 embedding_name = 'emb'
@@ -183,7 +181,7 @@ def train(use_cuda, save_dirname=None, is_local=True):
 
         start_time = time.time()
         batch_id = 0
-        for pass_id in range(PASS_NUM):
+        for pass_id in xrange(PASS_NUM):
             for data in train_data():
                 cost = exe.run(main_program,
                                feed=feeder.feed(data),
@@ -196,7 +194,7 @@ def train(use_cuda, save_dirname=None, is_local=True):
                         print("second per batch: " + str((time.time(
                         ) - start_time) / batch_id))
                     # Set the threshold low to speed up the CI test
-                    if float(cost) < 80.0:
+                    if float(cost) < 60.0:
                         if save_dirname is not None:
                             # TODO(liuyiqun): Change the target to crf_decode
                             fluid.io.save_inference_model(save_dirname, [
@@ -207,10 +205,6 @@ def train(use_cuda, save_dirname=None, is_local=True):
                         return
 
                 batch_id = batch_id + 1
-
-        raise RuntimeError(
-            "This model should save_inference_model and return, but not reach here, please check!"
-        )
 
     if is_local:
         train_loop(fluid.default_main_program())
@@ -247,21 +241,21 @@ def infer(use_cuda, save_dirname=None):
     inference_scope = fluid.core.Scope()
     with fluid.scope_guard(inference_scope):
         # Use fluid.io.load_inference_model to obtain the inference program desc,
-        # the feed_target_names (the names of variables that will be fed
+        # the feed_target_names (the names of variables that will be feeded
         # data using feed operators), and the fetch_targets (variables that
         # we want to obtain data from using fetch operators).
         [inference_program, feed_target_names,
          fetch_targets] = fluid.io.load_inference_model(save_dirname, exe)
 
         # Setup input by creating LoDTensor to represent sequence of words.
-        # Here each word is the basic element of the LoDTensor and the shape of
-        # each word (base_shape) should be [1] since it is simply an index to
+        # Here each word is the basic element of the LoDTensor and the shape of 
+        # each word (base_shape) should be [1] since it is simply an index to 
         # look up for the corresponding word vector.
         # Suppose the recursive_sequence_lengths info is set to [[3, 4, 2]],
-        # which has only one level of detail. Then the created LoDTensor will have only
-        # one higher level structure (sequence of words, or sentence) than the basic
-        # element (word). Hence the LoDTensor will hold data for three sentences of
-        # length 3, 4 and 2, respectively.
+        # which has only one level of detail. Then the created LoDTensor will have only 
+        # one higher level structure (sequence of words, or sentence) than the basic 
+        # element (word). Hence the LoDTensor will hold data for three sentences of 
+        # length 3, 4 and 2, respectively. 
         # Note that recursive_sequence_lengths should be a list of lists.
         recursive_seq_lens = [[3, 4, 2]]
         base_shape = [1]

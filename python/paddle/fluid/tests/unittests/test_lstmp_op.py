@@ -11,8 +11,6 @@
 #WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #See the License for the specific language governing permissions and
 #limitations under the License.
-
-from __future__ import print_function
 import unittest
 import numpy as np
 import test_lstm_op as LstmTest
@@ -36,14 +34,12 @@ def lstmp(
         w_b=None,  # 1 x 4D
         w_c=None,  # 1 x 3D
         is_reverse=False,
-        proj_clip=0.0,
-        cell_clip=0.0,
         act_gate=None,
         act_cell=None,
         act_cand=None,
         act_proj=None):
-    def _step(x, w_r, w_rh, w_c, r_pre, c_pre, proj_clip, cell_clip, act_gate,
-              act_cell, act_cand, act_proj):
+    def _step(x, w_r, w_rh, w_c, r_pre, c_pre, act_gate, act_cell, act_cand,
+              act_proj):
         g = np.dot(r_pre, w_r)  # 1 x 4D
         g = g + x
         g = np.reshape(g, (1, g.size))
@@ -57,17 +53,6 @@ def lstmp(
             g_f = act_gate(g_f + w_fc * c_pre)  # 1 x D
         c = g_f * c_pre + g_i * act_cand(c)  # 1 x D
 
-        def array_clip(a, clip):
-            size = np.prod(a.shape)
-            new_a = np.reshape(a, (size))
-            for i in range(size):
-                new_a[i] = max(new_a[i], -1.0 * clip)
-                new_a[i] = min(new_a[i], clip)
-            new_a = np.reshape(new_a, a.shape)
-            return new_a
-
-        if cell_clip > 0.0:
-            c = array_clip(c, cell_clip)
         if w_c is None:
             g_o = act_gate(g_o)  # 1 x D
         else:
@@ -77,8 +62,6 @@ def lstmp(
         # projection
         r = np.dot(h, w_rh)
         r = act_proj(r)
-        if proj_clip > 0.0:
-            r = array_clip(r, proj_clip)
         return r, c
 
     def _reverse(x, offset):
@@ -102,13 +85,13 @@ def lstmp(
         # compute one sequence
         seq_len = lod[0][i]
         x = input[offset[i]:offset[i + 1], :]
-        r_pre = h0[i]
+        r_pre = np.dot(h0[i], w_rh)  # 1 x P
+        r_pre = act_proj(r_pre)
         c_pre = c0[i]  # 1 x D
         for j in range(seq_len):
             # compute one step
-            r_pre, c_pre = _step(x[j], w_r, w_rh, w_c, r_pre, c_pre, proj_clip,
-                                 cell_clip, act_gate, act_cell, act_cand,
-                                 act_proj)
+            r_pre, c_pre = _step(x[j], w_r, w_rh, w_c, r_pre, c_pre, act_gate,
+                                 act_cell, act_cand, act_proj)
             projection.append(r_pre.flatten())
             cell.append(c_pre.flatten())
 
@@ -138,12 +121,13 @@ class TestLstmpOp(LstmTest.TestLstmOp):
 
         T = sum(self.lod[0])
         N = len(self.lod[0])
+
         x = np.random.normal(size=(T, 4 * self.D)).astype('float64')
         if self.has_initial_state:
-            h0 = np.random.normal(size=(N, self.P)).astype('float64')
+            h0 = np.random.normal(size=(N, self.D)).astype('float64')
             c0 = np.random.normal(size=(N, self.D)).astype('float64')
         else:
-            h0 = np.zeros((N, self.P)).astype('float64')
+            h0 = np.zeros((N, self.D)).astype('float64')
             c0 = np.zeros((N, self.D)).astype('float64')
         w = np.random.normal(size=(self.P, 4 * self.D)).astype('float64')
         if self.use_peepholes:
@@ -154,12 +138,9 @@ class TestLstmpOp(LstmTest.TestLstmOp):
         w_b = b[:, 0:4 * self.D]
         w_c = b[:, 4 * self.D:] if self.use_peepholes else None
         w_rh = np.random.normal(size=(self.D, self.P)).astype('float64')
-        proj_clip = 0.1
-        cell_clip = 0.1
         r, c = lstmp(x, self.lod, h0, c0, w, w_rh, w_b, w_c, self.is_reverse,
-                     proj_clip, cell_clip, ACTIVATION[self.act_gate],
-                     ACTIVATION[self.act_cell], ACTIVATION[self.act_cand],
-                     ACTIVATION[self.act_proj])
+                     ACTIVATION[self.act_gate], ACTIVATION[self.act_cell],
+                     ACTIVATION[self.act_cand], ACTIVATION[self.act_proj])
 
         self.inputs = {'Input': (x, self.lod), 'Weight': w, 'ProjWeight': w_rh}
 
@@ -176,8 +157,6 @@ class TestLstmpOp(LstmTest.TestLstmOp):
         self.attrs = {
             'use_peepholes': self.use_peepholes,
             'is_reverse': self.is_reverse,
-            'proj_clip': proj_clip,
-            'cell_clip': cell_clip,
             'gate_activation': self.act_gate,
             'cell_activation': self.act_cell,
             'candidate_activation': self.act_cand,
@@ -185,19 +164,19 @@ class TestLstmpOp(LstmTest.TestLstmOp):
         }
 
     def test_check_output(self):
-        self.check_output(atol=1e-8, check_dygraph=False)
+        self.check_output(atol=1e-8)
 
     def test_check_grad(self):
         # TODO(qingqing) remove folowing lines after the check_grad is refined.
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'Weight', 'ProjWeight', 'Bias'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            check_dygraph=False)
+            max_relative_error=1e-2)
 
 
 class TestLstmpOpHasInitial(TestLstmpOp):
@@ -207,6 +186,7 @@ class TestLstmpOpHasInitial(TestLstmpOp):
     def test_check_grad(self):
         # TODO(qingqing) remove folowing lines after the check_grad is refined.
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
@@ -214,80 +194,79 @@ class TestLstmpOpHasInitial(TestLstmpOp):
         self.check_grad(
             ['Input', 'Weight', 'ProjWeight', 'Bias', 'H0', 'C0'],
             ['Projection'],
-            numeric_grad_delta=0.0000005,
-            check_dygraph=False)
+            max_relative_error=1e-2)
 
     def test_check_grad_ingore_bias(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'ProjWeight', 'Weight'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('Bias'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('Bias'))
 
     def test_check_grad_ingore_weight(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'ProjWeight', 'Bias'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('Weight'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('Weight'))
 
     def test_check_grad_ingore_proj_weight(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'Weight', 'Bias'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('ProjWeight'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('ProjWeight'))
 
     def test_check_grad_ingore_input(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Weight', 'ProjWeight', 'Bias'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('Input'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('Input'))
 
     def test_check_grad_ingore_h0(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'Weight', 'ProjWeight', 'Bias', 'C0'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('H0'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('H0'))
 
     def test_check_grad_ingore_c0(self):
         N = len(self.lod[0])
+        self.outputs['OrderedP0'] = np.zeros((N, self.P)).astype('float64')
         self.outputs['BatchGate'] = np.zeros((N, 4 * self.D)).astype('float64')
         self.outputs['BatchHidden'] = np.zeros((N, self.D)).astype('float64')
         self.outputs['BatchCellPreAct'] = np.zeros(
             (N, self.D)).astype('float64')
         self.check_grad(
             ['Input', 'Weight', 'ProjWeight', 'Bias', 'H0'], ['Projection'],
-            numeric_grad_delta=0.0000005,
-            no_grad_set=set('C0'),
-            check_dygraph=False)
+            max_relative_error=1e-2,
+            no_grad_set=set('C0'))
 
 
 class TestLstmpOpRerverse(TestLstmpOp):
@@ -303,16 +282,6 @@ class TestLstmpOpNotUsePeepholes(TestLstmpOp):
 class TestLstmpOpLinearProjection(TestLstmpOp):
     def reset_argument(self):
         self.act_proj = 'identity'
-
-
-class TestLstmpOpLen0Case1(TestLstmpOp):
-    def reset_argument(self):
-        self.lod = [[0, 4, 0]]
-
-
-class TestLstmpOpLen0Case2(TestLstmpOp):
-    def reset_argument(self):
-        self.lod = [[2, 0, 3]]
 
 
 if __name__ == '__main__':

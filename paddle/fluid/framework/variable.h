@@ -18,7 +18,7 @@
 #include <typeindex>
 #include <typeinfo>
 
-#include "paddle/fluid/framework/var_type_traits.h"
+#include "paddle/fluid/platform/enforce.h"
 
 namespace paddle {
 namespace framework {
@@ -27,14 +27,10 @@ class Variable {
  public:
   template <typename T>
   const T& Get() const {
-    static_assert(
-        IsRegisteredVarType<T>(),
-        "Not registered type. Please register T inside var_type_traits.h");
-    PADDLE_ENFORCE(holder_ != nullptr, "Variable is not initialized.");
-    PADDLE_ENFORCE(holder_->Type() == VarTypeTrait<T>::kId,
-                   "The Variable type must be %s, but the type it holds is %s.",
-                   ToTypeName(VarTypeTrait<T>::kId),
-                   ToTypeName(holder_->Type()));
+    PADDLE_ENFORCE(holder_ != nullptr, "Variable must hold some thing");
+    PADDLE_ENFORCE(IsType<T>(),
+                   "Variable must be type %s, the holding type is %s",
+                   typeid(T).name(), holder_->Type().name());
     return *static_cast<const T*>(holder_->Ptr());
   }
 
@@ -42,62 +38,58 @@ class Variable {
 
   template <typename T>
   T* GetMutable() {
-    if (!holder_) {
-      holder_.reset(new PlaceholderImpl<T>());
-    } else {
-      PADDLE_ENFORCE(
-          holder_->Type() == VarTypeTrait<T>::kId,
-          "The Variable type must be %s, but the type it holds is %s.",
-          ToTypeName(VarTypeTrait<T>::kId), ToTypeName(holder_->Type()));
+    if (!IsType<T>()) {
+      holder_.reset(new PlaceholderImpl<T>(new T()));
     }
     return static_cast<T*>(holder_->Ptr());
   }
 
   template <typename T>
   bool IsType() const {
-    return holder_ && holder_->Type() == VarTypeTrait<T>::kId;
+    return holder_ != nullptr &&
+           std::type_index(typeid(T)) == std::type_index(holder_->Type());
   }
 
   void Clear() { holder_.reset(); }
 
-  int Type() const {
-    PADDLE_ENFORCE(holder_ != nullptr, "Variable is not initialized.");
+  std::type_index Type() const {
+    PADDLE_ENFORCE(holder_ != nullptr, "Must hold memory");
     return holder_->Type();
   }
 
  private:
   struct Placeholder {
-    virtual ~Placeholder() PADDLE_MAY_THROW {}
-
-    inline int Type() const { return type_; }
-    inline const void* Ptr() const { return ptr_; }
-    inline void* Ptr() { return ptr_; }
-
-   protected:
-    inline void Init(void* p, int type) {
-      ptr_ = p;
-      type_ = type;
-    }
-
-    void* ptr_;
-    int type_;
+    virtual ~Placeholder() {}
+    virtual const std::type_info& Type() const = 0;
+    virtual void* Ptr() const = 0;
   };
 
   // Placeholder hides type T, so it doesn't appear as a template
   // parameter of Variable.
   template <typename T>
   struct PlaceholderImpl : public Placeholder {
-    static_assert(
-        IsRegisteredVarType<T>(),
-        "Not registered type. Please register T inside var_type_traits.h");
-    PlaceholderImpl() { this->Init(&obj_, VarTypeTrait<T>::kId); }
+    explicit PlaceholderImpl(T* ptr) : ptr_(ptr), type_(typeid(T)) {}
 
-   private:
-    T obj_;
+    virtual const std::type_info& Type() const { return type_; }
+    virtual void* Ptr() const { return static_cast<void*>(ptr_.get()); }
+
+    std::unique_ptr<T> ptr_;
+    const std::type_info& type_;
   };
 
-  // pointers to a PlaceholderImpl object indeed.
-  std::unique_ptr<Placeholder> holder_;
+  std::unique_ptr<Placeholder>
+      holder_;  // pointers to a PlaceholderImpl object indeed.
+
+  // name_ is only meaningful with a Scope and accessible by it.
+  //
+  // NOTE: Please don't expose name_ by adding methods like
+  // Variable::Name or Scope::VarName!  A variable could have a human
+  // readable name or an auto-generated scope-unique name.  In the
+  // former case, the caller knows the name and doesn't need to access
+  // the name; in the latter case, the variable should be identified
+  // by its address but not the unreadable name.
+  friend class Scope;
+  const std::string* name_;
 };
 
 }  // namespace framework

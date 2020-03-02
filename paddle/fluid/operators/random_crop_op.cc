@@ -20,33 +20,10 @@ class RandomCropOp : public framework::OperatorWithKernel {
  public:
   using framework::OperatorWithKernel::OperatorWithKernel;
 
- protected:
-  void InferShape(framework::InferShapeContext* ctx) const override {
-    auto shape = ctx->Attrs().Get<std::vector<int>>("shape");
-    auto x_dim = ctx->GetInputDim("X");
-    PADDLE_ENFORCE_GT(
-        x_dim.size(), static_cast<int64_t>(shape.size()),
-        platform::errors::InvalidArgument(
-            "Rank of Input(X) must be equal to length of Attr(shape)"));
-    auto out_dim = framework::vectorize<int>(x_dim);
-    for (size_t i = 1; i <= shape.size(); ++i) {
-      size_t x_i = x_dim.size() - i;
-      size_t shape_i = shape.size() - i;
-      if (ctx->IsRuntime() || (x_dim[x_i] > 0 && shape[shape_i] > 0)) {
-        PADDLE_ENFORCE_GE(
-            x_dim[x_i], shape[shape_i],
-            platform::errors::InvalidArgument(
-                "Size of Input(X) must be larger than Attr(shape)"));
-      }
-      out_dim[x_i] = shape[shape_i];
-    }
-    ctx->SetOutputDim("Out", framework::make_ddim(out_dim));
-  }
-
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
     return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "X"),
+        framework::ToDataType(ctx.Input<framework::LoDTensor>("X")->type()),
         ctx.device_context());
   }
 };
@@ -60,11 +37,6 @@ class RandomCropOpMaker : public framework::OpProtoAndCheckerMaker {
     AddOutput("SeedOut", "The random seed after random cropping.")
         .AsIntermediate();
     AddAttr<std::vector<int>>("shape", "The shape of a cropped instance.");
-    AddAttr<int>("startup_seed",
-                 "If the input 'Seed' is not initialized, the 'startup_seed' "
-                 "will be used to replace it. Even so, the seed after random "
-                 "crop will also be outputed to the 'SeedOut'.")
-        .SetDefault(0);
     AddComment(R"DOC(
       This operator takes a batch of instance, and do random cropping on each instance.
       It means that cropping positions differs on each instance, which is determined
@@ -74,15 +46,33 @@ class RandomCropOpMaker : public framework::OpProtoAndCheckerMaker {
   }
 };
 
+class RandomCropOpInferShape : public framework::InferShapeBase {
+ public:
+  void operator()(framework::InferShapeContext* ctx) const override {
+    auto seed_dim = ctx->GetInputDim("Seed");
+    PADDLE_ENFORCE(seed_dim.size() == 1 && seed_dim[0] == 1);
+    auto shape = ctx->Attrs().Get<std::vector<int>>("shape");
+    auto x_dim = ctx->GetInputDim("X");
+    PADDLE_ENFORCE_GT(x_dim.size(), static_cast<int64_t>(shape.size()));
+    auto out_dim = framework::vectorize2int(x_dim);
+    for (size_t i = 1; i <= shape.size(); ++i) {
+      size_t x_i = x_dim.size() - i;
+      size_t shape_i = shape.size() - i;
+      PADDLE_ENFORCE_GE(x_dim[x_i], shape[shape_i]);
+      out_dim[x_i] = shape[shape_i];
+    }
+    ctx->SetOutputDim("Out", framework::make_ddim(out_dim));
+    ctx->SetOutputDim("SeedOut", framework::make_ddim({1}));
+  }
+};
+
 }  // namespace operators
 }  // namespace paddle
 
 namespace ops = paddle::operators;
 namespace f = paddle::framework;
-REGISTER_OPERATOR(
-    random_crop, ops::RandomCropOp, ops::RandomCropOpMaker,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
+REGISTER_OPERATOR(random_crop, ops::RandomCropOp, ops::RandomCropOpMaker,
+                  ops::RandomCropOpInferShape, f::EmptyGradOpMaker);
 
 template <typename T>
 using Kernel = ops::RandomCropKernel<paddle::platform::CPUDeviceContext, T>;

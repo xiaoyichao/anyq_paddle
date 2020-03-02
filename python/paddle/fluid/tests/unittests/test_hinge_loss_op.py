@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -22,7 +20,7 @@ from op_test import OpTest
 class TestHingeLossOp(OpTest):
     def setUp(self):
         self.op_type = 'hinge_loss'
-        samples_num = 100
+        samples_num = 64
         logits = np.random.uniform(-10, 10, (samples_num, 1)).astype('float32')
         labels = np.random.randint(0, 2, (samples_num, 1)).astype('float32')
 
@@ -37,7 +35,7 @@ class TestHingeLossOp(OpTest):
         self.check_output()
 
     def test_check_grad(self):
-        self.check_grad(['Logits'], 'Loss')
+        self.check_grad(['Logits'], 'Loss', max_relative_error=0.008)
 
 
 if __name__ == '__main__':

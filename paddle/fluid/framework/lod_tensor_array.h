@@ -18,8 +18,6 @@ limitations under the License. */
 
 namespace paddle {
 namespace framework {
-
 using LoDTensorArray = std::vector<LoDTensor>;
-
-}  // namespace framework
+}
 }  // namespace paddle

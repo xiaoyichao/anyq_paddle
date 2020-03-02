@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 #pragma once
 
+#include <dlfcn.h>
 #include <nccl.h>
 
 #include <mutex>  // NOLINT
+
 #include "paddle/fluid/platform/dynload/dynamic_loader.h"
-#include "paddle/fluid/platform/port.h"
 
 namespace paddle {
 namespace platform {
@@ -66,7 +67,6 @@ extern void* nccl_dso_handle;
   __macro(ncclGroupStart);              \
   __macro(ncclGroupEnd);                \
   __macro(ncclReduce);                  \
-  __macro(ncclReduceScatter);           \
   __macro(ncclGetErrorString);
 
 NCCL_RAND_ROUTINE_EACH(DECLARE_DYNAMIC_LOAD_NCCL_WRAP)

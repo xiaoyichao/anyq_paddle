@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #pragma once
-#include <vector>
-#include "paddle/fluid/framework/tensor.h"
 #include "paddle/fluid/operators/detail/strided_memcpy.h"
+
 namespace paddle {
 namespace operators {
 
@@ -40,7 +39,7 @@ inline void StridedMemcpy(const platform::DeviceContext& dev_ctx, const T* src,
                           const framework::DDim& dst_stride, T* dst) {
   paddle::operators::detail::StridedCopyDimVisitor<T> func(
       dev_ctx, src, src_stride, dst_stride, dst);
-  dst_dim.apply_visitor(func);
+  boost::apply_visitor(func, dst_dim);
 }
 
 // Strided numel memory copy from src to dst by the specified axis
@@ -96,27 +95,6 @@ inline void StridedNumelCopyWithAxis(const platform::DeviceContext& ctx,
       PADDLE_THROW("Paddle is not compiled with GPU");
 #endif
     }
-  }
-}
-
-template <typename T>
-inline void StridedMemcpyWithAxis0(
-    const platform::DeviceContext& dev_ctx, const framework::Tensor& input,
-    const std::vector<const framework::Tensor*>& shape_refer,
-    std::vector<framework::Tensor*>* outputs) {
-  const framework::DDim in_stride = stride_numel(input.dims());
-  const int axis = 0;
-  size_t input_offset = 0;
-
-  for (size_t i = 0; i < outputs->size(); ++i) {
-    auto out_stride = stride_numel(shape_refer[i]->dims());
-    auto out = outputs->at(i);
-    if (out != nullptr) {
-      StridedNumelCopyWithAxis<T>(dev_ctx, axis, out->data<T>(), out_stride,
-                                  input.data<T>() + input_offset, in_stride,
-                                  out_stride[axis]);
-    }
-    input_offset += out_stride[axis];
   }
 }
 

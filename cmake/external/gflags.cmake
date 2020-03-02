@@ -14,46 +14,28 @@
 
 INCLUDE(ExternalProject)
 
-SET(GFLAGS_PREFIX_DIR  ${THIRD_PARTY_PATH}/gflags)
-SET(GFLAGS_SOURCE_DIR  ${THIRD_PARTY_PATH}/gflags/src/extern_gflags)
+SET(GFLAGS_SOURCES_DIR ${THIRD_PARTY_PATH}/gflags)
 SET(GFLAGS_INSTALL_DIR ${THIRD_PARTY_PATH}/install/gflags)
 SET(GFLAGS_INCLUDE_DIR "${GFLAGS_INSTALL_DIR}/include" CACHE PATH "gflags include directory." FORCE)
-set(GFLAGS_REPOSITORY https://github.com/gflags/gflags.git)
-set(GFLAGS_TAG        77592648e3f3be87d6c7123eb81cbad75f9aef5a)
 IF(WIN32)
-  set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/gflags_static.lib" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
+  set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/gflags.lib" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
 ELSE(WIN32)
   set(GFLAGS_LIBRARIES "${GFLAGS_INSTALL_DIR}/lib/libgflags.a" CACHE FILEPATH "GFLAGS_LIBRARIES" FORCE)
-  set(BUILD_COMMAND $(MAKE) --silent)
-  set(INSTALL_COMMAND $(MAKE) install)
 ENDIF(WIN32)
 
 INCLUDE_DIRECTORIES(${GFLAGS_INCLUDE_DIR})
 
-cache_third_party(extern_gflags
-    REPOSITORY   ${GFLAGS_REPOSITORY}
-    TAG          ${GFLAGS_TAG}
-    DIR          GFLAGS_SOURCE_DIR)
-
 ExternalProject_Add(
     extern_gflags
     ${EXTERNAL_PROJECT_LOG_ARGS}
-    ${SHALLOW_CLONE}
-    "${GFLAGS_DOWNLOAD_CMD}"
-    PREFIX          ${GFLAGS_PREFIX_DIR}
-    SOURCE_DIR      ${GFLAGS_SOURCE_DIR}
-    BUILD_COMMAND   ${BUILD_COMMAND}
-    INSTALL_COMMAND ${INSTALL_COMMAND}
+    GIT_REPOSITORY  "https://github.com/gflags/gflags.git"
+    GIT_TAG         77592648e3f3be87d6c7123eb81cbad75f9aef5a
+    PREFIX          ${GFLAGS_SOURCES_DIR}
     UPDATE_COMMAND  ""
     CMAKE_ARGS      -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
                     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
                     -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
-                    -DCMAKE_CXX_FLAGS_RELEASE=${CMAKE_CXX_FLAGS_RELEASE}
-                    -DCMAKE_CXX_FLAGS_DEBUG=${CMAKE_CXX_FLAGS_DEBUG}
                     -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
-                    -DCMAKE_C_FLAGS_DEBUG=${CMAKE_C_FLAGS_DEBUG}
-                    -DCMAKE_C_FLAGS_RELEASE=${CMAKE_C_FLAGS_RELEASE}
-                    -DBUILD_STATIC_LIBS=ON
                     -DCMAKE_INSTALL_PREFIX=${GFLAGS_INSTALL_DIR}
                     -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                     -DBUILD_TESTING=OFF
@@ -68,11 +50,13 @@ ADD_LIBRARY(gflags STATIC IMPORTED GLOBAL)
 SET_PROPERTY(TARGET gflags PROPERTY IMPORTED_LOCATION ${GFLAGS_LIBRARIES})
 ADD_DEPENDENCIES(gflags extern_gflags)
 
-# On Windows (including MinGW), the Shlwapi library is used by gflags if available.
-if (WIN32)
-  include(CheckIncludeFileCXX)
-  check_include_file_cxx("shlwapi.h" HAVE_SHLWAPI)
-  if (HAVE_SHLWAPI)
-    set_property(GLOBAL PROPERTY OS_DEPENDENCY_MODULES shlwapi.lib)
-  endif(HAVE_SHLWAPI)
-endif (WIN32)
+LIST(APPEND external_project_dependencies gflags)
+
+IF(WITH_C_API)
+  INSTALL(DIRECTORY ${GFLAGS_INCLUDE_DIR} DESTINATION third_party/gflags)
+  IF(ANDROID)
+    INSTALL(FILES ${GFLAGS_LIBRARIES} DESTINATION third_party/gflags/lib/${ANDROID_ABI})
+  ELSE()
+    INSTALL(FILES ${GFLAGS_LIBRARIES} DESTINATION third_party/gflags/lib)
+  ENDIF()
+ENDIF()

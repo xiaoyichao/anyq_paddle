@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #include "paddle/fluid/operators/sign_op.h"
-#include <memory>
 
 namespace paddle {
 namespace operators {
@@ -46,18 +45,17 @@ $$Out = X.sign()$$
   }
 };
 
-template <typename T>
-class SignGradMaker : public framework::SingleGradOpMaker<T> {
+class SignGradMaker : public framework::SingleGradOpDescMaker {
  public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
+  using framework::SingleGradOpDescMaker::SingleGradOpDescMaker;
 
-  std::unique_ptr<T> Apply() const override {
-    auto *grad_op = new T();
+  std::unique_ptr<framework::OpDesc> Apply() const override {
+    auto *grad_op = new framework::OpDesc();
     grad_op->SetType("scale");
-    grad_op->SetInput("X", this->OutputGrad("Out"));
-    grad_op->SetOutput("Out", this->InputGrad("X"));
+    grad_op->SetInput("X", OutputGrad("Out"));
+    grad_op->SetOutput("Out", InputGrad("X"));
     grad_op->SetAttr("scale", 0.0f);
-    return std::unique_ptr<T>(grad_op);
+    return std::unique_ptr<framework::OpDesc>(grad_op);
   }
 };
 
@@ -67,8 +65,6 @@ class SignGradMaker : public framework::SingleGradOpMaker<T> {
 namespace ops = paddle::operators;
 
 REGISTER_OPERATOR(sign, ops::SignOp, ops::SignOpMaker<float>,
-                  ops::SignGradMaker<paddle::framework::OpDesc>,
-                  ops::SignGradMaker<paddle::imperative::OpBase>);
+                  ops::SignGradMaker);
 REGISTER_OP_CPU_KERNEL(
-    sign, ops::SignKernel<paddle::platform::CPUDeviceContext, float>,
-    ops::SignKernel<paddle::platform::CPUDeviceContext, double>);
+    sign, ops::SignKernel<paddle::platform::CPUDeviceContext, float>);

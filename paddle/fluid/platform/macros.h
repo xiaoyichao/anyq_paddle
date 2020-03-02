@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #pragma once
-#include <cfloat>
 
 // Disable the copy and assignment operator for a class.
 #ifndef DISABLE_COPY_AND_ASSIGN
@@ -24,7 +23,3 @@ limitations under the License. */
   classname& operator=(const classname&) = delete; \
   classname& operator=(classname&&) = delete
 #endif
-
-#if defined(__FLT_MAX__)
-#define FLT_MAX __FLT_MAX__
-#endif  // __FLT_MAX__

@@ -20,11 +20,6 @@
 # for instance, protobuf libs path is <install_dir>/lib64
 # on CentOS, but <install_dir>/lib on other systems.
 
-if(UNIX AND NOT APPLE)
-  # except apple from nix*Os family
-  set(LINUX TRUE)
-endif(UNIX AND NOT APPLE)
-
 IF(WIN32)
     SET(HOST_SYSTEM "win32")
 ELSE(WIN32)
@@ -78,6 +73,21 @@ MARK_AS_ADVANCED(HOST_SYSTEM CPU_CORES)
 
 MESSAGE(STATUS "Found Paddle host system: ${HOST_SYSTEM}, version: ${HOST_SYSTEM_VERSION}")
 MESSAGE(STATUS "Found Paddle host system's CPU: ${CPU_CORES} cores")
+
+# configuration for cross-compiling
+IF(DEFINED CMAKE_SYSTEM_NAME)
+    INCLUDE(cross_compiling/host)
+    IF(${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+        SET(ANDROID TRUE)
+        INCLUDE(cross_compiling/android)
+    ELSEIF(${CMAKE_SYSTEM_NAME} STREQUAL "RPi")
+        SET(RPI TRUE)
+        INCLUDE(cross_compiling/raspberry_pi)
+    ELSEIF(${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
+        SET(IOS TRUE)
+        INCLUDE(cross_compiling/ios)
+    ENDIF()
+ENDIF()
 
 # external dependencies log output
 SET(EXTERNAL_PROJECT_LOG_ARGS

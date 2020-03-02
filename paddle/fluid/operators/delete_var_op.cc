@@ -32,11 +32,6 @@ class DeleteVarOp : public framework::OperatorBase {
   }
 };
 
-class DeleteVarOpShapeInference : public framework::InferShapeBase {
- public:
-  void operator()(framework::InferShapeContext *ctx) const override {}
-};
-
 class DeleteVarOpInfoMaker : public framework::OpProtoAndCheckerMaker {
  public:
   void Make() override {
@@ -51,9 +46,6 @@ It should not be configured by users directly.
 }  // namespace operators
 }  // namespace paddle
 
-REGISTER_OPERATOR(
-    delete_var, paddle::operators::DeleteVarOp,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>,
-    paddle::operators::DeleteVarOpInfoMaker,
-    paddle::operators::DeleteVarOpShapeInference);
+REGISTER_OPERATOR(delete_var, paddle::operators::DeleteVarOp,
+                  paddle::framework::EmptyGradOpMaker,
+                  paddle::operators::DeleteVarOpInfoMaker);

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -23,8 +21,8 @@ class TestSquaredL2DistanceOp_f0(OpTest):
     def setUp(self):
         self.op_type = "squared_l2_distance"
         self.inputs = {
-            'X': np.random.uniform(0.1, 0.6, (5, 20)).astype("float32"),
-            'Y': np.random.uniform(0.1, 0.6, (5, 20)).astype("float32")
+            'X': np.random.uniform(0.1, 0.6, (2, 3)).astype("float32"),
+            'Y': np.random.uniform(0.1, 0.6, (2, 3)).astype("float32")
         }
         sub_res = self.inputs['X'] - self.inputs['Y']
         output = sub_res * sub_res

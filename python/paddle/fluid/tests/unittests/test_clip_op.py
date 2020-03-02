@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -40,10 +38,11 @@ class TestClipOp(OpTest):
         self.check_output()
 
     def test_check_grad_normal(self):
-        self.check_grad(['X'], 'Out')
+        self.check_grad(
+            ['X'], 'Out', max_relative_error=self.max_relative_error)
 
     def initTestCase(self):
-        self.shape = (10, 10)
+        self.shape = (4, 4)
         self.max = 0.7
         self.min = 0.1
 

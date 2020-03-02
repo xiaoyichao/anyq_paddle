@@ -62,7 +62,7 @@ def resnet_cifar10(input, depth=32):
         return tmp
 
     assert (depth - 2) % 6 == 0
-    n = (depth - 2) // 6
+    n = (depth - 2) / 6
     conv1 = conv_bn_layer(
         input=input, ch_out=16, filter_size=3, stride=1, padding=1)
     res1 = layer_warp(basicblock, conv1, 16, 16, n, 1)
@@ -121,7 +121,7 @@ def train(net_type, use_cuda, save_dirname, is_local):
     avg_cost = fluid.layers.mean(cost)
     acc = fluid.layers.accuracy(input=predict, label=label)
 
-    # Test program
+    # Test program 
     test_program = fluid.default_main_program().clone(for_test=True)
 
     optimizer = fluid.optimizer.Adam(learning_rate=0.001)
@@ -210,7 +210,7 @@ def infer(use_cuda, save_dirname=None):
     inference_scope = fluid.core.Scope()
     with fluid.scope_guard(inference_scope):
         # Use fluid.io.load_inference_model to obtain the inference program desc,
-        # the feed_target_names (the names of variables that will be fed
+        # the feed_target_names (the names of variables that will be feeded
         # data using feed operators), and the fetch_targets (variables that
         # we want to obtain data from using fetch operators).
         [inference_program, feed_target_names,
@@ -221,16 +221,31 @@ def infer(use_cuda, save_dirname=None):
         batch_size = 1
         tensor_img = numpy.random.rand(batch_size, 3, 32, 32).astype("float32")
 
+        # Use inference_transpiler to speedup
+        inference_transpiler_program = inference_program.clone()
+        t = fluid.InferenceTranspiler()
+        t.transpile(inference_transpiler_program, place)
+
         # Construct feed as a dictionary of {feed_target_name: feed_target_data}
         # and results will contain a list of data corresponding to fetch_targets.
         results = exe.run(inference_program,
                           feed={feed_target_names[0]: tensor_img},
                           fetch_list=fetch_targets)
 
+        transpiler_results = exe.run(inference_transpiler_program,
+                                     feed={feed_target_names[0]: tensor_img},
+                                     fetch_list=fetch_targets)
+
+        assert len(results[0]) == len(transpiler_results[0])
+        for i in range(len(results[0])):
+            np.testing.assert_almost_equal(
+                results[0][i], transpiler_results[0][i], decimal=5)
+
         print("infer results: ", results[0])
 
         fluid.io.save_inference_model(save_dirname, feed_target_names,
-                                      fetch_targets, exe, inference_program)
+                                      fetch_targets, exe,
+                                      inference_transpiler_program)
 
 
 def main(net_type, use_cuda, is_local=True):

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import numpy as np
 import unittest
 from op_test import OpTest
@@ -36,7 +34,8 @@ class TestL1NormOp(OpTest):
         self.check_output()
 
     def test_check_grad(self):
-        self.check_grad(['X'], 'Out')
+        self.check_grad(
+            ['X'], 'Out', max_relative_error=self.max_relative_error)
 
 
 if __name__ == "__main__":

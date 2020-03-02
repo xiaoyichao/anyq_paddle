@@ -44,7 +44,7 @@ class TargetAssignOp : public framework::OperatorWithKernel {
       PADDLE_ENFORCE_EQ(neg_dims.size(), 2,
                         "The rank of Input(NegIndices) must be 2.");
       PADDLE_ENFORCE_EQ(neg_dims[1], 1,
-                        "The last dimension of Out(NegIndices) must be 1.");
+                        "The last dimenstion of Out(NegIndices) must be 1.");
     }
 
     auto n = mi_dims[0];
@@ -58,7 +58,7 @@ class TargetAssignOp : public framework::OperatorWithKernel {
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
     return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "X"),
+        framework::ToDataType(ctx.Input<framework::LoDTensor>("X")->type()),
         ctx.device_context());
   }
 };
@@ -152,10 +152,8 @@ template struct NegTargetAssignFunctor<platform::CPUDeviceContext, float,
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(
-    target_assign, ops::TargetAssignOp, ops::TargetAssignOpMaker,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
+REGISTER_OPERATOR(target_assign, ops::TargetAssignOp, ops::TargetAssignOpMaker,
+                  paddle::framework::EmptyGradOpMaker);
 REGISTER_OP_CPU_KERNEL(
     target_assign,
     ops::TargetAssignKernel<paddle::platform::CPUDeviceContext, int, float>,

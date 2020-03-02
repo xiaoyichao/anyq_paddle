@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import paddle.fluid.core as core
 import numpy as np
@@ -21,9 +19,6 @@ import paddle.fluid.layers as layers
 from paddle.fluid.framework import Program, program_guard
 from paddle.fluid.executor import Executor
 from paddle.fluid.backward import append_backward
-from paddle.fluid.layers.control_flow import split_lod_tensor
-from paddle.fluid.layers.control_flow import merge_lod_tensor
-from paddle.fluid.layer_helper import LayerHelper
 
 
 class TestCPULoDTensorArrayOps(unittest.TestCase):
@@ -58,7 +53,7 @@ class TestCPULoDTensorArrayOps(unittest.TestCase):
             expect_false=expect_false,
             expect_out=tensor)
 
-    def split_and_merge_lod_tensor_level_0(self, use_merge_lod_infer=False):
+    def test_split_and_merge_lod_tensor_level_0(self):
         tensor = core.LoDTensor()
         tensor.set(np.arange(10).reshape(10, 1).astype('int32'), self.place())
         tensor.set_recursive_sequence_lengths([[3, 6, 1]])
@@ -88,23 +83,10 @@ class TestCPULoDTensorArrayOps(unittest.TestCase):
             mask=mask,
             expect_true=expect_true,
             expect_false=expect_false,
-            expect_out=tensor,
-            use_merge_lod_infer=use_merge_lod_infer)
+            expect_out=tensor)
 
-    def test_split_and_merge_lod_tensor_1(self):
-        self.split_and_merge_lod_tensor_level_0()
-
-    def test_split_and_merge_lod_tensor_2(self):
-        self.split_and_merge_lod_tensor_level_0(True)
-
-    def main(self,
-             tensor,
-             mask,
-             expect_true,
-             expect_false,
-             expect_out,
-             level=0,
-             use_merge_lod_infer=False):
+    def main(self, tensor, mask, expect_true, expect_false, expect_out,
+             level=0):
         place = self.place()
         program = Program()
         with program_guard(program):
@@ -114,39 +96,15 @@ class TestCPULoDTensorArrayOps(unittest.TestCase):
             y = layers.data(name='y', shape=[1])
             y.persistable = True
 
-            out_true, out_false = split_lod_tensor(input=x, mask=y, level=level)
+            out_true, out_false = layers.split_lod_tensor(
+                input=x, mask=y, level=level)
             out_true.persistable = True
             out_false.persistable = True
-            if use_merge_lod_infer:
-                input_dict = {
-                    'X': x,
-                    'Mask': mask,
-                    'InTrue': out_true,
-                    'InFalse': out_false,
-                    'level': level
-                }
-                helper = LayerHelper('merge_lod_tensor_infer')
-                out = helper.create_variable_for_type_inference(
-                    dtype=out_true.dtype)
-                helper.append_op(
-                    type='merge_lod_tensor_infer',
-                    inputs={
-                        'X': x,
-                        'Mask': y,
-                        'InTrue': out_true,
-                        'InFalse': out_false
-                    },
-                    outputs={'Out': out},
-                    attrs={'level': level})
-                out.persistable = True
-            else:
-                out = merge_lod_tensor(
-                    in_true=out_true,
-                    in_false=out_false,
-                    mask=y,
-                    x=x,
-                    level=level)
-                out.persistable = True
+
+            out = layers.merge_lod_tensor(
+                in_true=out_true, in_false=out_false, mask=y, x=x, level=level)
+
+            out.persistable = True
 
         exe = Executor(place)
         scope = core.Scope()
@@ -161,9 +119,9 @@ class TestCPULoDTensorArrayOps(unittest.TestCase):
         var_false = scope.find_var(out_false.name).get_tensor()
 
         var_out = scope.find_var(out.name).get_tensor()
-        if not use_merge_lod_infer:
-            self.check_tensor_same(var_true, expect_true)
-            self.check_tensor_same(var_false, expect_false)
+
+        self.check_tensor_same(var_true, expect_true)
+        self.check_tensor_same(var_false, expect_false)
         self.check_tensor_same(var_out, expect_out)
 
     def check_tensor_same(self, actual, expect):
@@ -184,8 +142,9 @@ class TestCPUSplitMergeLoDTensorGrad(unittest.TestCase):
 
             level = 0
 
-            out_true, out_false = split_lod_tensor(input=x, mask=y, level=level)
-            out = merge_lod_tensor(
+            out_true, out_false = layers.split_lod_tensor(
+                input=x, mask=y, level=level)
+            out = layers.merge_lod_tensor(
                 in_true=out_true, in_false=out_false, mask=y, x=x, level=level)
             mean = layers.mean(out)
 

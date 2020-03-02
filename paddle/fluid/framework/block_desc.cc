@@ -13,11 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #include "paddle/fluid/framework/block_desc.h"
-
 #include <queue>
-#include <unordered_set>
-#include <utility>
-
 #include "paddle/fluid/framework/operator.h"
 #include "paddle/fluid/framework/program_desc.h"
 
@@ -157,16 +153,6 @@ void BlockDesc::RemoveOp(size_t s, size_t e) {
   }
   need_update_ = true;
   ops_.erase(ops_.begin() + s, ops_.begin() + e);
-}
-
-void BlockDesc::RemoveOpInternal(const OpDesc *op_desc) {
-  // TODO(minqiyang): make this faster
-  for (auto it = ops_.begin(); it != ops_.end(); ++it) {
-    if (it->get() == op_desc) {
-      ops_.erase(it);
-      break;
-    }
-  }
 }
 
 std::vector<OpDesc *> BlockDesc::AllOps() const {

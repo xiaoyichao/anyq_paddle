@@ -1,4 +1,4 @@
-/* Copyright (c) 2018 PaddlePaddle Authors. All Rights Reserved.
+/* Copyright (c) 2016 PaddlePaddle Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License. */
 
 #include "paddle/fluid/operators/crop_op.h"
-#include <memory>
-#include <string>
-#include <vector>
+#include <boost/lexical_cast.hpp>
 
 namespace paddle {
 namespace operators {
@@ -36,7 +34,7 @@ class CropOp : public framework::OperatorWithKernel {
       auto shape = ctx->Attrs().Get<std::vector<int>>("shape");
       PADDLE_ENFORCE_EQ(
           int64_t(shape.size()), x_dim.size(),
-          "Shape size should be equal to dimension size of input tensor.");
+          "Shape size should be equal to dimention size of input tensor.");
       std::vector<int64_t> tensor_shape(shape.size());
       for (size_t i = 0; i < shape.size(); ++i) {
         tensor_shape[i] = static_cast<int64_t>(shape[i]);
@@ -54,7 +52,7 @@ class CropOp : public framework::OperatorWithKernel {
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
     return framework::OpKernelType(
-        OperatorWithKernel::IndicateVarDataType(ctx, "X"),
+        framework::ToDataType(ctx.Input<framework::LoDTensor>("X")->type()),
         ctx.device_context());
   }
 };
@@ -175,46 +173,21 @@ class CropOpGrad : public framework::OperatorWithKernel {
 
   framework::OpKernelType GetExpectedKernelType(
       const framework::ExecutionContext& ctx) const override {
-    return framework::OpKernelType(OperatorWithKernel::IndicateVarDataType(
-                                       ctx, framework::GradVarName("Out")),
-                                   ctx.device_context());
+    return framework::OpKernelType(
+        framework::ToDataType(
+            ctx.Input<framework::LoDTensor>(framework::GradVarName("Out"))
+                ->type()),
+        ctx.device_context());
   }
 };
-
-template <typename T>
-class CropGradOpMaker : public framework::SingleGradOpMaker<T> {
- public:
-  using framework::SingleGradOpMaker<T>::SingleGradOpMaker;
-
- protected:
-  std::unique_ptr<T> Apply() const override {
-    std::unique_ptr<T> op(new T());
-    op->SetType("crop_grad");
-    op->SetInput(framework::GradVarName("Out"), this->OutputGrad("Out"));
-    op->SetInput("X", this->Input("X"));
-    if (this->HasInput("Offsets")) {
-      op->SetInput("Offsets", this->Input("Offsets"));
-    }
-    op->SetOutput(framework::GradVarName("X"), this->InputGrad("X"));
-    op->SetAttrMap(this->Attrs());
-    return op;
-  }
-};
-
-DECLARE_NO_NEED_BUFFER_VARS_INFERENCE(GropNoNeedBufferVarInference, "Y");
 
 }  // namespace operators
 }  // namespace paddle
 
 namespace ops = paddle::operators;
 REGISTER_OPERATOR(crop, ops::CropOp, ops::CropOpMaker,
-                  ops::CropGradOpMaker<paddle::framework::OpDesc>,
-                  ops::CropGradOpMaker<paddle::imperative::OpBase>,
-                  ops::GropNoNeedBufferVarInference);
+                  paddle::framework::DefaultGradOpDescMaker<true>);
 REGISTER_OPERATOR(crop_grad, ops::CropOpGrad);
+REGISTER_OP_CPU_KERNEL(crop, ops::CropKernel<float>);
 REGISTER_OP_CPU_KERNEL(
-    crop, ops::CropKernel<paddle::platform::CPUDeviceContext, float>,
-    ops::CropKernel<paddle::platform::CPUDeviceContext, double>);
-REGISTER_OP_CPU_KERNEL(
-    crop_grad, ops::CropGradKernel<paddle::platform::CPUDeviceContext, float>,
-    ops::CropGradKernel<paddle::platform::CPUDeviceContext, double>);
+    crop_grad, ops::CropGradKernel<paddle::platform::CPUDeviceContext, float>);

@@ -23,8 +23,7 @@ struct GRUUnitFunctor<platform::CPUDeviceContext, T> {
   static void compute(const platform::CPUDeviceContext &context,
                       GRUMetaValue<T> value, int frame_size, int batch_size,
                       const detail::ActivationType active_node,
-                      const detail::ActivationType active_gate,
-                      bool origin_mode) {
+                      const detail::ActivationType active_gate) {
 #ifndef __NVCC__
     auto blas = math::GetBlas<platform::CPUDeviceContext, T>(context);
     if (value.prev_out_value) {
@@ -44,8 +43,7 @@ struct GRUUnitFunctor<platform::CPUDeviceContext, T> {
     }
 
     detail::forward_final_output(detail::forward::gru_finalOutput<T>(), value,
-                                 frame_size, batch_size, active_node,
-                                 origin_mode);
+                                 frame_size, batch_size, active_node);
 #endif
   }
 };
@@ -56,12 +54,10 @@ struct GRUUnitGradFunctor<platform::CPUDeviceContext, T> {
                       GRUMetaValue<T> value, GRUMetaGrad<T> grad,
                       int frame_size, int batch_size,
                       const detail::ActivationType active_node,
-                      const detail::ActivationType active_gate,
-                      bool origin_mode) {
+                      const detail::ActivationType active_gate) {
 #ifndef __NVCC__
     detail::backward_state_grad(detail::backward::gru_stateGrad<T>(), value,
-                                grad, frame_size, batch_size, active_node,
-                                origin_mode);
+                                grad, frame_size, batch_size, active_node);
     auto blas = math::GetBlas<platform::CPUDeviceContext, T>(context);
     if (value.prev_out_value && grad.prev_out_grad) {
       blas.GEMM(false, true, batch_size, frame_size, frame_size, 1,

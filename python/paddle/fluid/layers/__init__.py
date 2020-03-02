@@ -12,35 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
-from . import ops
-from .ops import *
-from . import nn
-from .nn import *
-from . import io
-from .io import *
-from . import tensor
-from .tensor import *
-from . import control_flow
-from .control_flow import *
-from . import device
-from .device import *
-from . import math_op_patch
-from .math_op_patch import *
-from . import loss
-from .loss import *
-from . import detection
-from .detection import *
-from . import metric_op
-from .metric_op import *
-from .learning_rate_scheduler import *
-from .collective import *
-from .distributions import *
-from .sequence_lod import *
-from . import rnn
+import ops
+from ops import *
+import nn
+from nn import *
+import io
+from io import *
+import tensor
+from tensor import *
+import control_flow
+from control_flow import *
+import device
+from device import *
+import math_op_patch
+from math_op_patch import *
+import detection
+from detection import *
+import metric_op
+from metric_op import *
+from learning_rate_scheduler import *
 
 __all__ = []
+__all__ += math_op_patch.__all__
 __all__ += nn.__all__
 __all__ += io.__all__
 __all__ += tensor.__all__
@@ -50,9 +43,3 @@ __all__ += device.__all__
 __all__ += detection.__all__
 __all__ += metric_op.__all__
 __all__ += learning_rate_scheduler.__all__
-__all__ += distributions.__all__
-__all__ += sequence_lod.__all__
-__all__ += loss.__all__
-__all__ += rnn.__all__
-
-from .rnn import *

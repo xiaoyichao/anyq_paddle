@@ -35,15 +35,14 @@ class ShapeOp : public framework::OperatorWithKernel {
 class ShapeOpMaker : public framework::OpProtoAndCheckerMaker {
  public:
   void Make() override {
-    AddInput("Input", "(LoDTensor), The input tensor.");
-    AddOutput(
-        "Out",
-        "(LoDTensor), The shape of input tensor, the data type of the shape"
-        " is int32_t, will be on the same device with the input Tensor.");
+    AddInput("Input", "(Tensor), The input tensor.");
+    AddOutput("Out",
+              "(Tensor), The shape of input tensor, the data type of the shape"
+              " is int64_t, will be on the same device with the input Tensor.");
     AddComment(R"DOC(
-Shape Operator.
+Shape Operator
 
-Return the shape of the input.
+Get the shape of input tensor. Only support CPU input Tensor now.
 )DOC");
   }
 };
@@ -52,10 +51,7 @@ Return the shape of the input.
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-REGISTER_OPERATOR(
-    shape, ops::ShapeOp, ops::ShapeOpMaker,
-    paddle::framework::EmptyGradOpMaker<paddle::framework::OpDesc>,
-    paddle::framework::EmptyGradOpMaker<paddle::imperative::OpBase>);
-REGISTER_OP_CPU_KERNEL(shape, ops::ShapeKernel<int>, ops::ShapeKernel<int32_t>,
-                       ops::ShapeKernel<int64_t>, ops::ShapeKernel<float>,
-                       ops::ShapeKernel<double>);
+REGISTER_OPERATOR(shape, ops::ShapeOp, ops::ShapeOpMaker,
+                  paddle::framework::EmptyGradOpMaker);
+REGISTER_OP_CPU_KERNEL(shape, ops::ShapeKernel<int>, ops::ShapeKernel<int64_t>,
+                       ops::ShapeKernel<float>, ops::ShapeKernel<double>);

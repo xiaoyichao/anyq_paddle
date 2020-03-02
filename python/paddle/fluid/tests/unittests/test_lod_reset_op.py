@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
-
 import unittest
 import numpy as np
 from op_test import OpTest
@@ -22,7 +20,7 @@ from op_test import OpTest
 class TestLodResetOpByAttr(OpTest):
     def setUp(self):
         self.op_type = "lod_reset"
-        x = np.random.random((10, 20)).astype("float64")
+        x = np.random.random((10, 20)).astype("float32")
         lod = [[3, 2, 5]]
         # target_offset_lod and target_lod are the same lod info represented
         # in offset-based format and length-based format, respectively.
@@ -34,18 +32,16 @@ class TestLodResetOpByAttr(OpTest):
         self.outputs = {'Out': (x, [target_lod])}
 
     def test_check_output(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_output(check_dygraph=False)
+        self.check_output()
 
     def test_check_grad(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_grad(["X"], "Out", check_dygraph=False)
+        self.check_grad(["X"], "Out")
 
 
 class TestLodResetOpByInput(OpTest):
     def setUp(self):
         self.op_type = "lod_reset"
-        x = np.random.random((10, 20)).astype("float64")
+        x = np.random.random((10, 20)).astype("float32")
         lod = [[3, 2, 5]]
         # target_offset_lod and target_lod are the same lod info represented
         # in offset-based format and length-based format, respectively.
@@ -58,18 +54,16 @@ class TestLodResetOpByInput(OpTest):
         self.outputs = {'Out': (x, [target_lod])}
 
     def test_check_output(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_output(check_dygraph=False)
+        self.check_output()
 
     def test_check_grad(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_grad(["X"], "Out", no_grad_set=set("Y"), check_dygraph=False)
+        self.check_grad(["X"], "Out", no_grad_set=set("Y"))
 
 
 class TestLodResetOpBoth(OpTest):
     def setUp(self):
         self.op_type = "lod_reset"
-        x = np.random.random((10, 20)).astype("float64")
+        x = np.random.random((10, 20)).astype("float32")
         lod = [[3, 2, 5]]
         target_offset_lod_attr = [0, 7, 10]
         target_offset_lod_in = [0, 4, 7, 10]
@@ -82,54 +76,27 @@ class TestLodResetOpBoth(OpTest):
         self.outputs = {'Out': (x, [target_lod_in])}
 
     def test_check_output(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_output(check_dygraph=False)
+        self.check_output()
 
     def test_check_grad(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_grad(["X"], "Out", no_grad_set=set("Y"), check_dygraph=False)
+        self.check_grad(["X"], "Out", no_grad_set=set("Y"))
 
 
 class TestLodResetOpYIsLoDTensor(OpTest):
     def setUp(self):
         self.op_type = "lod_reset"
-        x = np.random.random((10, 20)).astype("float64")
+        x = np.random.random((10, 20)).astype("float32")
         lod = [[3, 2, 5]]
-        y = np.random.random((10, 10)).astype("float64")
+        y = np.random.random((10, 10)).astype("float32")
         target_lod = [[4, 3, 3]]
         self.inputs = {'X': (x, lod), 'Y': (y, target_lod)}
         self.outputs = {'Out': (x, target_lod)}
 
     def test_check_output(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_output(check_dygraph=False)
+        self.check_output()
 
     def test_check_grad(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_grad(["X"], "Out", no_grad_set=set("Y"), check_dygraph=False)
-
-
-class TestLodAppendOpByAttr(OpTest):
-    def setUp(self):
-        self.op_type = "lod_reset"
-        x = np.random.random((10, 20)).astype("float64")
-        lod = [[3, 2, 5]]
-        # target_offset_lod and target_lod are the same lod info represented
-        # in offset-based format and length-based format, respectively.
-        target_offset_lod = [i for i in range(11)]
-        self.inputs = {'X': (x, lod)}
-        out_lod = [[3, 2, 5], [1] * 10]
-        # The `target_lod` attribute is still based on offset
-        self.attrs = {'target_lod': target_offset_lod, 'append': True}
-        self.outputs = {'Out': (x, out_lod)}
-
-    def test_check_output(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_output(check_dygraph=False)
-
-    def test_check_grad(self):
-        # TODO(wangzhongpu): support lod in dygraph mode
-        self.check_grad(["X"], "Out", check_dygraph=False)
+        self.check_grad(["X"], "Out", no_grad_set=set("Y"))
 
 
 if __name__ == '__main__':

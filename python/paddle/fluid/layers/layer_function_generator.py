@@ -11,23 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import print_function
 import re
+import cStringIO
 import functools
 import warnings
 import string
 
-from six.moves import cStringIO
 from ..proto import framework_pb2
-from ..framework import OpProtoHolder, Variable, core, convert_np_dtype_to_dtype_, in_dygraph_mode
+from ..framework import OpProtoHolder, Variable
 from ..layer_helper import LayerHelper
-from ..data_feeder import check_variable_and_dtype
 
-__all__ = [
-    'deprecated', 'generate_layer_fn', 'generate_activation_fn', 'autodoc',
-    'templatedoc'
-]
+__all__ = ['deprecated', 'generate_layer_fn', 'autodoc', 'templatedoc']
 
 
 def _convert_(name):
@@ -62,9 +56,7 @@ def escape_math(text):
                                     _two_dollar_pattern_.sub(r"!!\1!!", text)))
 
 
-def _generate_doc_string_(op_proto,
-                          additional_args_lines=None,
-                          skip_attrs_set=None):
+def _generate_doc_string_(op_proto):
     """
     Generate docstring by OpProto
 
@@ -78,7 +70,7 @@ def _generate_doc_string_(op_proto,
     if not isinstance(op_proto, framework_pb2.OpProto):
         raise TypeError("OpProto should be `framework_pb2.OpProto`")
 
-    buf = cStringIO()
+    buf = cStringIO.StringIO()
     buf.write(escape_math(op_proto.comment))
     buf.write('\nArgs:\n')
     for each_input in op_proto.inputs:
@@ -92,14 +84,6 @@ def _generate_doc_string_(op_proto,
         buf.write('\n')
 
     skip_attrs = OpProtoHolder.generated_op_attr_names()
-    # attr use_mkldnn and is_test also should not be visible to users.
-    skip_attrs.add("use_mkldnn")
-    skip_attrs.add("is_test")
-    skip_attrs.add("use_cudnn")
-
-    if skip_attrs_set:
-        for t in skip_attrs_set:
-            skip_attrs.add(t)
 
     for each_attr in op_proto.attrs:
         if each_attr.name in skip_attrs:
@@ -111,13 +95,6 @@ def _generate_doc_string_(op_proto,
         buf.write('): ')
         buf.write(escape_math(each_attr.comment))
         buf.write('\n')
-
-    if additional_args_lines is not None:
-        for line in additional_args_lines:
-            line = line.strip()
-            buf.write('    ')
-            buf.write(line)
-            buf.write('\n')
 
     if len(op_proto.outputs) != 0:
         buf.write('\nReturns:\n')
@@ -142,9 +119,9 @@ def generate_layer_fn(op_type):
     """
     op_proto = OpProtoHolder.instance().get_op_proto(op_type)
     not_intermediate_outputs = \
-        [output for output in op_proto.outputs if not output.intermediate]
+        filter(lambda output: not output.intermediate, op_proto.outputs)
     intermediate_outputs = \
-        [output for output in op_proto.outputs if output.intermediate]
+        filter(lambda output: output.intermediate, op_proto.outputs)
 
     if len(not_intermediate_outputs) != 1:
         raise ValueError("Only one non intermediate output operator can be",
@@ -174,8 +151,6 @@ def generate_layer_fn(op_type):
             if not isinstance(val, list) and not isinstance(val, tuple):
                 val = [val]
             if len(val) == 0:
-                if len(args) == 0:
-                    continue
                 val = [args[0]]
                 args = args[1:]
 
@@ -191,15 +166,6 @@ def generate_layer_fn(op_type):
                         "operator {0} must input same dtype. {1} vs {2}".format(
                             op_type, dtype, each.dtype))
 
-        if dtype is None:
-            arg_dtype = kwargs.get("dtype")
-            if arg_dtype:
-                if not isinstance(arg_dtype, core.VarDesc.VarType):
-                    dtype = convert_np_dtype_to_dtype_(arg_dtype)
-                else:
-                    dtype = arg_dtype
-            else:
-                dtype = core.VarDesc.VarType.FP32
         return dtype
 
     def func(*args, **kwargs):
@@ -224,75 +190,16 @@ def generate_layer_fn(op_type):
             out_var = out[0] if (isinstance(out, list) or
                                  isinstance(out, tuple)) else out
         else:
-            out_var = helper.create_variable_for_type_inference(dtype=dtype)
+            out_var = helper.create_tmp_variable(dtype=dtype)
         outputs[o_name] = [out_var]
         for name in intermediate_output_names:
-            outputs[name] = [
-                helper.create_variable_for_type_inference(dtype=dtype)
-            ]
+            outputs[name] = [helper.create_tmp_variable(dtype=dtype)]
         helper.append_op(
             type=op_type, inputs=inputs, outputs=outputs, attrs=kwargs)
         return helper.append_activation(out_var)
 
     func.__name__ = op_type
     func.__doc__ = _generate_doc_string_(op_proto)
-    return func
-
-
-def generate_activation_fn(op_type):
-    """Register the Python layer for an Operator without Attribute.
-
-    Args:
-       op_type: The name of the operator to be created.
-
-    This function takes in the operator type (sigmoid, exp , tanh etc) and
-    creates the operator functionality.
-
-    """
-    op_proto = OpProtoHolder.instance().get_op_proto(op_type)
-
-    def func(x, name=None):
-        if in_dygraph_mode():
-            inputs = {'X': [x]}
-            op = getattr(core.ops, op_type)
-            outs = op(inputs)
-            return outs['Out'][0]
-
-        check_variable_and_dtype(x, 'x', ['float16', 'float32', 'float64'],
-                                 op_type)
-        helper = LayerHelper(op_type, **locals())
-
-        output = helper.create_variable_for_type_inference(dtype=x.dtype)
-        helper.append_op(type=op_type, inputs={"X": x}, outputs={"Out": output})
-        return output
-
-    func.__name__ = op_type
-    func.__doc__ = _generate_doc_string_(
-        op_proto,
-        additional_args_lines=[
-            "name(str, optional): The default value is None.  Normally there is no need for user to set this property.  For more information, please refer to :ref:`api_guide_Name` ."
-        ])
-    func.__doc__ = func.__doc__ + """
-
-Return type
-  Variable
-Examples:
-    .. code-block:: python
-
-        import paddle.fluid as fluid
-        import numpy as np
-
-        inputs = fluid.data(name="x", shape = [None, 4], dtype='float32')
-        output = fluid.layers.%s(inputs)
-
-        exe = fluid.Executor(fluid.CPUPlace())
-        exe.run(fluid.default_startup_program())
-
-        #input.shape=1X4, batch_size=1
-        img = np.array([[1.0, 2.0, 3.0, 4.0]]).astype(np.float32)
-        res = exe.run(fluid.default_main_program(), feed={'x':img}, fetch_list=[output])
-        print(res)
-""" % op_type
     return func
 
 

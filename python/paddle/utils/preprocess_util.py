@@ -14,7 +14,7 @@
 
 import os
 import math
-import six.moves.cPickle as pickle
+import cPickle as pickle
 import random
 import collections
 
@@ -39,7 +39,7 @@ def save_list(l, outfile):
 
 def exclude_pattern(f):
     """
-    Return whether f is in the exclude pattern.
+    Return whether f is in the exlucde pattern.
     Exclude the files that starts with . or ends with ~.
     """
     return f.startswith(".") or f.endswith("~")
@@ -81,7 +81,7 @@ def list_files(path):
 def get_label_set_from_dir(path):
     """
     Return a dictionary of the labels and label ids from a path.
-    Assume each directory in the path corresponds to a unique label.
+    Assume each direcotry in the path corresponds to a unique label.
     The keys of the dictionary is the label name.
     The values of the dictionary is the label id.
     """
@@ -169,7 +169,7 @@ class Dataset:
             random.shuffle(keyvalue_indices[k])
 
         num_data_per_key_batch = \
-            math.ceil(num_per_batch / float(len(list(keyvalue_indices.keys()))))
+            math.ceil(num_per_batch / float(len(keyvalue_indices.keys())))
 
         if num_data_per_key_batch < 2:
             raise Exception("The number of data in a batch is too small")
@@ -182,8 +182,8 @@ class Dataset:
                 end_idx = int(
                     min(begin_idx + num_data_per_key_batch,
                         len(keyvalue_indices[k])))
-                print("begin_idx, end_idx")
-                print(begin_idx, end_idx)
+                print "begin_idx, end_idx"
+                print begin_idx, end_idx
                 for idx in range(begin_idx, end_idx):
                     permuted_data.append(self.data[keyvalue_indices[k][idx]])
                 keyvalue_readpointer[k] = end_idx
@@ -198,7 +198,7 @@ class DataBatcher:
 
     def __init__(self, train_data, test_data, label_set):
         """
-        train_data, test_data: Each one is a dataset object representing
+        train_data, test_data: Each one is a dataset object repesenting
         training and testing data, respectively.
         label_set: a dictionary storing the mapping from label name to label id.
         """
@@ -256,7 +256,7 @@ class DataBatcher:
 class DatasetCreater(object):
     """
     A virtual class for creating datasets.
-    The derived class needs to implement the following methods:
+    The derived clasas needs to implemnt the following methods:
        - create_dataset()
        - create_meta_file()
     """
@@ -301,9 +301,9 @@ class DatasetCreater(object):
         Create a data set object from a path.
         It will use directory structure or a file list to determine dataset if
         self.from_list is True. Otherwise, it will uses a file list  to
-        determine the dataset.
+        determine the datset.
         path: the path of the dataset.
-        return a tuple of Dataset object, and a mapping from label set
+        return a tuple of Dataset object, and a mapping from lable set
         to label id.
         """
         if self.from_list:
@@ -314,9 +314,9 @@ class DatasetCreater(object):
     def create_dataset_from_list(self, path):
         """
         Create a data set object from a path.
-        It will uses a file list to determine the dataset.
+        It will uses a file list to determine the datset.
         path: the path of the dataset.
-        return a tuple of Dataset object, and a mapping from label set
+        return a tuple of Dataset object, and a mapping from lable set
         to label id
         """
         raise NotImplementedError
@@ -327,7 +327,7 @@ class DatasetCreater(object):
         It will use directory structure or a file list to determine dataset if
         self.from_list is True.
         path: the path of the dataset.
-        return a tuple of Dataset object, and a mapping from label set
+        return a tuple of Dataset object, and a mapping from lable set
         to label id
         """
         raise NotImplementedError
@@ -357,6 +357,6 @@ class DatasetCreater(object):
             data_batcher.create_batches_and_list(
                 self.output_path, self.train_list_name, self.test_list_name,
                 self.label_set_name)
-            self.num_classes = len(list(train_label_set.keys()))
+            self.num_classes = len(train_label_set.keys())
             self.create_meta_file(train_data)
         return out_path
