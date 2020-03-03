@@ -15,5 +15,4 @@
     howto/training/index
     howto/debug/index
     howto/evaluation/index
-    howto/inference/index
-    models/index.rst
+    model_bank/index.rst

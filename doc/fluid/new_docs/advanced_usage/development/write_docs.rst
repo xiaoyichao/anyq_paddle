@@ -1,1 +1,1 @@
-../../../dev/write_docs_cn.rst
+../../../../../doc/fluid/dev/contribute_to_paddle_cn.md
